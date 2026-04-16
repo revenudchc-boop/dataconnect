@@ -60,7 +60,7 @@
             border-radius: 8px;
             font-family: monospace;
             font-size: 12px;
-            height: 200px;
+            height: 250px;
             overflow-y: auto;
             direction: ltr;
             text-align: left;
@@ -79,6 +79,19 @@
             border-radius: 8px;
             margin: 15px 0;
         }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #1e3c72;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -86,10 +99,10 @@
         <h1>🧪 اختبار الاتصال بـ Google Drive</h1>
         <p style="text-align: center; color: #666;">هذا الملف لاختبار القدرة على قراءة وكتابة الملفات على Drive</p>
         
-        <div id="status" class="status info">⏳ جاهز... اضغط "تسجيل الدخول" للبدء</div>
+        <div id="status" class="status info">⏳ جاري تحميل المكتبات...</div>
         
         <div class="flex-buttons">
-            <button id="loginBtn" onclick="authenticate()">🔐 تسجيل الدخول بحساب Google</button>
+            <button id="loginBtn" onclick="authenticate()" disabled>🔐 تسجيل الدخول بحساب Google</button>
             <button id="writeBtn" onclick="writeTestFile()" disabled>📝 إنشاء ملف تجريبي على Drive</button>
             <button id="readBtn" onclick="readTestFile()" disabled>📖 قراءة الملف من Drive</button>
             <button id="deleteBtn" onclick="deleteTestFile()" disabled>🗑️ حذف الملف التجريبي</button>
@@ -103,7 +116,7 @@
         <hr>
         <h3>📋 سجل العمليات</h3>
         <div id="logArea" class="log-area">
-            [系统] جاهز للبدء...
+            [系统] جاري تحميل المكتبات...
         </div>
         
         <hr>
@@ -141,7 +154,9 @@ Client ID: 835944620738-jcl9dh4j2fjuut18vhvik3605t9k20m9.apps.googleusercontent.
             const logEntry = document.createElement('div');
             logEntry.style.color = colors[type] || '#d4d4d4';
             logEntry.style.marginBottom = '5px';
-            logEntry.innerHTML = `[${time}] ${message}`;
+            logEntry.style.borderBottom = '1px solid #333';
+            logEntry.style.padding = '3px 0';
+            logEntry.innerHTML = `<span style="color:#888;">[${time}]</span> ${message}`;
             logArea.appendChild(logEntry);
             logArea.scrollTop = logArea.scrollHeight;
             console.log(message);
@@ -149,7 +164,7 @@ Client ID: 835944620738-jcl9dh4j2fjuut18vhvik3605t9k20m9.apps.googleusercontent.
 
         function updateStatus(message, type = 'info') {
             const statusDiv = document.getElementById('status');
-            statusDiv.textContent = message;
+            statusDiv.innerHTML = message;
             statusDiv.className = `status ${type}`;
         }
 
@@ -159,72 +174,90 @@ Client ID: 835944620738-jcl9dh4j2fjuut18vhvik3605t9k20m9.apps.googleusercontent.
             document.getElementById('deleteBtn').disabled = !deleteEnabled;
         }
 
-        // تهيئة GAPI
-        function gapiLoaded() {
-            addLog('🔄 جاري تحميل GAPI...', 'info');
-            gapi.load('client', initializeGapiClient);
+        function enableLoginButton() {
+            document.getElementById('loginBtn').disabled = false;
+            updateStatus('✅ المكتبات جاهزة - اضغط "تسجيل الدخول"', 'success');
         }
 
-        async function initializeGapiClient() {
-            try {
-                await gapi.client.init({
-                    apiKey: CONFIG.apiKey,
-                    discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
-                });
+        // تهيئة GAPI
+        function initializeGapiClient() {
+            addLog('🔄 جاري تهيئة GAPI...', 'info');
+            gapi.client.init({
+                apiKey: CONFIG.apiKey,
+                discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
+            }).then(() => {
                 gapiInited = true;
                 addLog('✅ GAPI initialized بنجاح', 'success');
-                checkAndEnableLogin();
-            } catch (error) {
+                if (gisInited) enableLoginButton();
+            }).catch((error) => {
                 addLog(`❌ خطأ في تهيئة GAPI: ${error.message}`, 'error');
-            }
+            });
+        }
+
+        // تحميل GAPI
+        function loadGAPI() {
+            addLog('🔄 جاري تحميل GAPI...', 'info');
+            const script = document.createElement('script');
+            script.src = 'https://apis.google.com/js/api.js';
+            script.onload = () => {
+                addLog('✅ تم تحميل GAPI، جاري التهيئة...', 'success');
+                gapi.load('client', initializeGapiClient);
+            };
+            script.onerror = () => {
+                addLog('❌ فشل تحميل GAPI', 'error');
+            };
+            document.head.appendChild(script);
         }
 
         // تهيئة GIS
-        function gisLoaded() {
-            addLog('🔄 جاري تحميل GIS...', 'info');
+        function initializeGIS() {
+            addLog('🔄 جاري تهيئة GIS...', 'info');
             tokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: CONFIG.clientId,
                 scope: CONFIG.scope,
-                callback: '', // سيتم تعيينه لاحقاً
+                callback: (tokenResponse) => {
+                    if (tokenResponse.error) {
+                        addLog(`❌ خطأ في المصادقة: ${tokenResponse.error}`, 'error');
+                        updateStatus(`❌ فشل المصادقة: ${tokenResponse.error}`, 'error');
+                        return;
+                    }
+                    accessToken = tokenResponse.access_token;
+                    gapi.client.setToken({ access_token: accessToken });
+                    localStorage.setItem('drive_test_token', accessToken);
+                    addLog('✅ تم الحصول على access_token بنجاح!', 'success');
+                    updateStatus('✅ تم تسجيل الدخول بنجاح! يمكنك الآن إنشاء ملف', 'success');
+                    setButtonsState(true, true, true);
+                    findExistingTestFile();
+                },
             });
             gisInited = true;
             addLog('✅ GIS initialized بنجاح', 'success');
-            checkAndEnableLogin();
+            if (gapiInited) enableLoginButton();
         }
 
-        function checkAndEnableLogin() {
-            if (gapiInited && gisInited) {
-                addLog('✅ جميع المكتبات جاهزة! يمكنك تسجيل الدخول', 'success');
-                updateStatus('✅ المكتبات جاهزة - اضغط "تسجيل الدخول"', 'success');
-                document.getElementById('loginBtn').disabled = false;
-            }
+        // تحميل GIS
+        function loadGIS() {
+            addLog('🔄 جاري تحميل GIS...', 'info');
+            const script = document.createElement('script');
+            script.src = 'https://accounts.google.com/gsi/client';
+            script.onload = () => {
+                addLog('✅ تم تحميل GIS، جاري التهيئة...', 'success');
+                initializeGIS();
+            };
+            script.onerror = () => {
+                addLog('❌ فشل تحميل GIS', 'error');
+            };
+            document.head.appendChild(script);
         }
 
-        // المصادقة
+        // بدء المصادقة
         async function authenticate() {
+            if (!tokenClient) {
+                addLog('❌ tokenClient غير جاهز. انتظر اكتمال التحميل', 'error');
+                return;
+            }
             addLog('🔐 بدء عملية المصادقة مع Google...', 'info');
             updateStatus('🔄 جاري المصادقة... انتظر النافذة المنبثقة', 'info');
-            
-            tokenClient.callback = async (tokenResponse) => {
-                if (tokenResponse.error) {
-                    addLog(`❌ خطأ في المصادقة: ${tokenResponse.error}`, 'error');
-                    updateStatus(`❌ فشل المصادقة: ${tokenResponse.error}`, 'error');
-                    return;
-                }
-                accessToken = tokenResponse.access_token;
-                gapi.client.setToken({ access_token: accessToken });
-                
-                // حفظ التوكن في localStorage للاستخدام المؤقت
-                localStorage.setItem('drive_test_token', accessToken);
-                
-                addLog('✅ تم الحصول على access_token بنجاح!', 'success');
-                updateStatus('✅ تم تسجيل الدخول بنجاح! يمكنك الآن إنشاء ملف', 'success');
-                setButtonsState(true, true, true);
-                
-                // محاولة البحث عن ملف موجود مسبقاً
-                await findExistingTestFile();
-            };
-            
             tokenClient.requestAccessToken({ prompt: 'consent' });
         }
 
@@ -275,7 +308,7 @@ Client ID: 835944620738-jcl9dh4j2fjuut18vhvik3605t9k20m9.apps.googleusercontent.
                 message: "تم إنشاء هذا الملف بنجاح! ✅",
                 user: "DCHC Invoice System",
                 version: "1.0",
-                viewedInvoices: ["C25-25656|269044", "P25-11021|267786"]  // مثال على البيانات التي سنخزنها
+                viewedInvoices: ["C25-25656|269044", "P25-11021|267786"]
             };
             
             const fileMetadata = {
@@ -301,7 +334,6 @@ Client ID: 835944620738-jcl9dh4j2fjuut18vhvik3605t9k20m9.apps.googleusercontent.
                     testFileId = data.id;
                     addLog(`✅ تم إنشاء الملف بنجاح!`, 'success');
                     addLog(`📄 معرف الملف: ${data.id}`, 'success');
-                    addLog(`🔗 رابط الملف: https://drive.google.com/file/d/${data.id}/view`, 'success');
                     updateStatus('✅ تم إنشاء الملف بنجاح!', 'success');
                     
                     document.getElementById('fileDetails').innerHTML = `
@@ -310,9 +342,6 @@ Client ID: 835944620738-jcl9dh4j2fjuut18vhvik3605t9k20m9.apps.googleusercontent.
                         <strong>تاريخ الإنشاء:</strong> ${new Date().toLocaleString('ar-EG')}
                     `;
                     document.getElementById('fileInfo').style.display = 'block';
-                    
-                    // عرض محتوى الملف الذي تم إنشاؤه
-                    addLog(`📦 محتوى الملف: ${JSON.stringify(testData, null, 2)}`, 'info');
                 } else {
                     throw new Error(data.error?.message || 'فشل إنشاء الملف');
                 }
@@ -397,18 +426,9 @@ Client ID: 835944620738-jcl9dh4j2fjuut18vhvik3605t9k20m9.apps.googleusercontent.
 
         // بدء التهيئة عند تحميل الصفحة
         window.onload = () => {
-            addLog('🚀 بدء تهيئة مكتبات Google...', 'info');
-            
-            // تحميل التوكن المخزن مسبقاً
-            const savedToken = localStorage.getItem('drive_test_token');
-            if (savedToken) {
-                accessToken = savedToken;
-                addLog('🔑 تم استعادة access_token من التخزين المحلي', 'info');
-            }
-            
-            // تهيئة GAPI و GIS
-            gapiLoaded();
-            gisLoaded();
+            addLog('🚀 بدء تحميل مكتبات Google...', 'info');
+            loadGAPI();
+            loadGIS();
         };
     </script>
 </body>
