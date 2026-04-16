@@ -85,69 +85,91 @@ let selectedInvoices = new Set();
 // ============================================
 const SYNC_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwhI-WpSqD2jmS0-dENEDACYFYV9JiS5r0snG0haJqtBJTSROXrtBHmHOY5-_5c_Pf9/exec';
 
-// دالة لتحميل حالة المعاينة من Drive
+// تحميل الحالة من Drive
 async function loadViewedFromDrive() {
+    if (!driveAccessToken) {
+        await refreshAccessToken();
+    }
+    
     try {
-        const response = await fetch(SYNC_WEB_APP_URL);
+        const response = await fetch(`https://www.googleapis.com/drive/v3/files/${DRIVE_CONFIG.fileId}?alt=media`, {
+            headers: { 'Authorization': `Bearer ${driveAccessToken}` }
+        });
+        
         if (response.ok) {
             const allData = await response.json();
-            // بيانات كل مستخدم مخزنة تحت اسم المستخدم (username)
             const userKey = currentUser?.username || 'guest';
             const userViewed = allData[userKey] || [];
             viewedInvoices = new Set(userViewed);
             saveViewedInvoices(); // تحديث localStorage
-            console.log(`✅ تم تحميل ${viewedInvoices.size} فاتورة معاينة من Drive`);
+            console.log(`✅ تم تحميل ${viewedInvoices.size} فاتورة من Drive للمستخدم ${userKey}`);
+            return true;
+        } else if (response.status === 404) {
+            console.log('⚠️ ملف الحالة غير موجود على Drive، سيتم إنشاؤه عند أول حفظ');
             return true;
         } else {
-            console.error('فشل تحميل البيانات من Drive');
+            const errorText = await response.text();
+            console.error(`❌ فشل تحميل البيانات من Drive: ${response.status} - ${errorText}`);
+            return false;
         }
     } catch (error) {
-        console.error('خطأ في تحميل الحالة من Drive:', error);
+        console.error('❌ خطأ في تحميل الحالة من Drive:', error);
+        return false;
     }
-    return false;
 }
 
-// دالة لحفظ حالة المعاينة إلى Drive
+// حفظ الحالة إلى Drive
 async function saveViewedToDrive() {
+    if (!driveAccessToken) {
+        await refreshAccessToken();
+    }
+    
     try {
-        // أولاً: نقرأ الملف الحالي من Drive لنحافظ على بيانات المستخدمين الآخرين
-        const readResponse = await fetch(SYNC_WEB_APP_URL);
+        // 1. قراءة البيانات الحالية من الملف أولاً
         let allData = {};
+        const readResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${DRIVE_CONFIG.fileId}?alt=media`, {
+            headers: { 'Authorization': `Bearer ${driveAccessToken}` }
+        });
+        
         if (readResponse.ok) {
             allData = await readResponse.json();
+        } else if (readResponse.status !== 404) {
+            console.warn(`⚠️ لم نتمكن من قراءة الملف الحالي: ${readResponse.status}`);
         }
         
-        // نحدث بيانات المستخدم الحالي
+        // 2. تحديث بيانات المستخدم الحالي
         const userKey = currentUser?.username || 'guest';
         allData[userKey] = [...viewedInvoices];
         allData.lastUpdated = new Date().toISOString();
         
-        // نرسل البيانات الكاملة لحفظها
-        const saveResponse = await fetch(SYNC_WEB_APP_URL, {
-            method: 'POST',
+        // 3. حفظ البيانات المحدثة
+        const saveResponse = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${DRIVE_CONFIG.fileId}?uploadType=media`, {
+            method: 'PATCH',
             headers: {
-                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${driveAccessToken}`,
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify(allData)
         });
         
         if (saveResponse.ok) {
-            console.log('✅ تم حفظ الحالة في Drive');
+            console.log(`✅ تم حفظ الحالة في Drive للمستخدم ${userKey}`);
             return true;
         } else {
-            console.error('فشل حفظ الحالة في Drive');
+            const errorText = await saveResponse.text();
+            console.error(`❌ فشل حفظ البيانات في Drive: ${saveResponse.status} - ${errorText}`);
+            return false;
         }
     } catch (error) {
-        console.error('خطأ في حفظ الحالة إلى Drive:', error);
+        console.error('❌ خطأ في حفظ الحالة إلى Drive:', error);
+        return false;
     }
-    return false;
 }
 // متغير لتخزين الشعار
 let companyLogoBase64 = null;
 
 
-// ============================================
-// إعدادات Drive المباشرة (بدون Web App)
+// إعدادات Drive المباشرة
 // ============================================
 const DRIVE_CONFIG = {
     clientId: '835944620738-jcl9dh4j2fjuut18vhvik3605t9k20m9.apps.googleusercontent.com',
@@ -160,20 +182,31 @@ let driveAccessToken = null;
 
 // تجديد Access Token باستخدام Refresh Token
 async function refreshAccessToken() {
-    const response = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-            client_id: DRIVE_CONFIG.clientId,
-            client_secret: DRIVE_CONFIG.clientSecret,
-            refresh_token: DRIVE_CONFIG.refreshToken,
-            grant_type: 'refresh_token'
-        })
-    });
-    const data = await response.json();
-    driveAccessToken = data.access_token;
-    console.log('✅ تم تجديد Access Token');
-    return driveAccessToken;
+    try {
+        const response = await fetch('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                client_id: DRIVE_CONFIG.clientId,
+                client_secret: DRIVE_CONFIG.clientSecret,
+                refresh_token: DRIVE_CONFIG.refreshToken,
+                grant_type: 'refresh_token'
+            })
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`فشل تجديد التوكن: ${response.status} - ${errorText}`);
+        }
+        
+        const data = await response.json();
+        driveAccessToken = data.access_token;
+        console.log('✅ تم تجديد Access Token بنجاح');
+        return driveAccessToken;
+    } catch (error) {
+        console.error('❌ خطأ في تجديد Access Token:', error);
+        throw error;
+    }
 }
 
 // تحميل من Drive
@@ -186,7 +219,10 @@ async function loadViewedFromDrive() {
         if (response.ok) {
             const allData = await response.json();
             const userKey = currentUser?.username || 'guest';
-            viewedInvoices = new Set(allData[userKey] || []);
+// متغيرات حفظ حالة المعاينة
+// ============================================
+let viewedInvoices = new Set(); // تخزين الفواتير التي تمت معاينتها
+
             saveViewedInvoices();
             console.log(`✅ تم تحميل ${viewedInvoices.size} فاتورة من Drive`);
             return true;
@@ -5810,11 +5846,9 @@ window.resetCreditSearch = function() {
     showNotification('تم إعادة ضبط البحث', 'info');
 };
 
-// ============================================
 // دالة تبديل حالة معاينة الفاتورة
-// ============================================
 window.toggleInvoiceViewed = async function(key, isChecked, finalNumber, draftNumber) {
-    console.log('🔄 تغيير حالة المعاينة:', key, isChecked);
+    console.log('🔄 تغيير حالة المعاينة:', key, isChecked ? 'محدد' : 'غير محدد');
     
     if (isChecked) {
         if (!viewedInvoices.has(key)) {
@@ -5841,13 +5875,29 @@ window.toggleInvoiceViewed = async function(key, isChecked, finalNumber, draftNu
 };
 
 
-// ============================================
 // حفظ حالة المعاينة محلياً
-// ============================================
 function saveViewedInvoices() {
-    const viewedArray = [...viewedInvoices];
-    localStorage.setItem('viewedInvoices', JSON.stringify(viewedArray));
-    console.log('💾 تم حفظ محلياً:', viewedArray.length, 'فاتورة');
+    try {
+        const viewedArray = [...viewedInvoices];
+        localStorage.setItem('viewedInvoices', JSON.stringify(viewedArray));
+        console.log('💾 تم حفظ محلياً:', viewedArray.length, 'فاتورة');
+    } catch (error) {
+        console.error('❌ خطأ في الحفظ المحلي:', error);
+    }
+}
+
+// تحميل حالة المعاينة من localStorage
+function loadViewedInvoices() {
+    try {
+        const saved = localStorage.getItem('viewedInvoices');
+        if (saved) {
+            const viewedArray = JSON.parse(saved);
+            viewedInvoices = new Set(viewedArray);
+            console.log('📂 تم تحميل محلياً:', viewedInvoices.size, 'فاتورة');
+        }
+    } catch (error) {
+        console.error('❌ خطأ في تحميل الحالة المحلية:', error);
+    }
 }
 
 // ============================================
