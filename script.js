@@ -1382,11 +1382,11 @@ function parseCreditNode(creditElement) {
 window.applyAdvancedSearch = function() {
     if (!invoicesData.length) { filteredInvoices = []; renderData(); return; }
     
-    const [final, draft, cust, vessel, bl, cont, status, from, to, invType, contractCustomerId] = [
-        'searchFinalNumber', 'searchDraftNumber', 'searchCustomer', 'searchVessel', 
-        'searchBlNumber', 'searchContainer', 'searchStatus', 'searchDateFrom', 
-        'searchDateTo', 'searchInvoiceType', 'searchContractCustomerId'
-    ].map(id => document.getElementById(id)?.value.toLowerCase().trim() || '');
+    const [final, draft, cust, vessel, bl, cont, status, from, to, invType, contractCustomerId, viewedStatus] = [
+    'searchFinalNumber', 'searchDraftNumber', 'searchCustomer', 'searchVessel', 
+    'searchBlNumber', 'searchContainer', 'searchStatus', 'searchDateFrom', 
+    'searchDateTo', 'searchInvoiceType', 'searchContractCustomerId', 'searchViewedStatus'
+	].map(id => document.getElementById(id)?.value.toLowerCase().trim() || '');
 
     let tempInvoices = [...invoicesData];
 
@@ -1472,8 +1472,8 @@ window.applyAdvancedSearch = function() {
 
 window.resetAdvancedSearch = function() {
     const searchFields = ['searchFinalNumber', 'searchDraftNumber', 'searchCustomer', 'searchVessel', 
-                          'searchBlNumber', 'searchContainer', 'searchStatus', 'searchDateFrom', 
-                          'searchDateTo', 'searchInvoiceType', 'searchContractCustomerId'];
+                      'searchBlNumber', 'searchContainer', 'searchStatus', 'searchDateFrom', 
+                      'searchDateTo', 'searchInvoiceType', 'searchContractCustomerId', 'searchViewedStatus'];
     searchFields.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
@@ -5693,20 +5693,18 @@ function buildInvoiceSearchUI() {
     const searchBody = advancedSearch.querySelector('.search-body');
     if (!searchBody) return;
     
+    // تحديد نوع حقل اسم العميل بناءً على نوع المستخدم
     let customerFieldHtml = '';
     const isAdmin = currentUser && currentUser.userType === 'admin';
     
-    // إذا كان المستخدم ليس مديراً (أي محاسب أو عميل أو زائر) وله معرفات
     if (!isAdmin && currentUser) {
         let availableIds = [];
-        // جمع المعرفات من customerIds و contractCustomerId فقط (بدون taxNumber)
         if (currentUser.customerIds && Array.isArray(currentUser.customerIds)) {
             availableIds.push(...currentUser.customerIds);
         }
         if (currentUser.contractCustomerId && !availableIds.includes(currentUser.contractCustomerId)) {
             availableIds.push(currentUser.contractCustomerId);
         }
-        // إزالة التكرار والقيم الفارغة
         availableIds = [...new Set(availableIds.filter(id => id && id.trim() !== ''))];
         
         if (availableIds.length > 0) {
@@ -5726,7 +5724,6 @@ function buildInvoiceSearchUI() {
         }
     }
     
-    // إذا لم يتم إنشاء القائمة المنسدلة (مدير أو لا توجد معرفات) استخدم الحقل النصي
     if (!customerFieldHtml) {
         customerFieldHtml = `
             <div class="search-field">
@@ -5736,7 +5733,6 @@ function buildInvoiceSearchUI() {
         `;
     }
     
-    // بناء واجهة البحث المتقدم كاملة
     searchBody.innerHTML = `
         <div class="search-grid">
             <div class="search-field">
@@ -5761,11 +5757,11 @@ function buildInvoiceSearchUI() {
                 <input type="text" id="searchContainer" placeholder="رقم الحاوية...">
             </div>
             <div class="search-field">
-                <label><i class="fas fa-tag"></i> الحالة</label>
-                <select id="searchStatus">
+                <label><i class="fas fa-check-square"></i> حالة المعاينة</label>
+                <select id="searchViewedStatus">
                     <option value="">الكل</option>
-                    <option value="FINAL">نهائية (FINAL)</option>
-                    <option value="DRAFT">مسودة (DRAFT)</option>
+                    <option value="viewed">محددة ✓</option>
+                    <option value="not_viewed">غير محددة ☐</option>
                 </select>
             </div>
             <div class="search-field">
@@ -5783,6 +5779,10 @@ function buildInvoiceSearchUI() {
                     <option value="cash">نقدي</option>
                     <option value="postponed">أجل</option>
                 </select>
+            </div>
+            <div class="search-field">
+                <label><i class="fas fa-id-card"></i> رقم عقد العميل</label>
+                <input type="text" id="searchContractCustomerId" placeholder="رقم العقد...">
             </div>
         </div>
         <div class="search-actions">
