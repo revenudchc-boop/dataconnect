@@ -86,42 +86,66 @@ let selectedInvoices = new Set();
 const SYNC_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwhI-WpSqD2jmS0-dENEDACYFYV9JiS5r0snG0haJqtBJTSROXrtBHmHOY5-_5c_Pf9/exec';
 
 async function loadViewedFromDrive() {
+    console.log('🔍 [1] بدء تنفيذ loadViewedFromDrive');
+    
+    // التحقق من وجود currentUser
+    if (!currentUser) {
+        console.error('❌ [2] currentUser غير موجود!');
+        return false;
+    }
+    console.log('✅ [2] currentUser موجود:', currentUser.username);
+    
+    // التحقق من وجود driveAccessToken
     if (!driveAccessToken) {
-        await refreshAccessToken();
+        console.log('🔄 [3] driveAccessToken غير موجود، جاري تجديده...');
+        try {
+            await refreshAccessToken();
+            console.log('✅ [4] تم تجديد access_token بنجاح');
+        } catch (error) {
+            console.error('❌ [4] فشل تجديد access_token:', error);
+            return false;
+        }
+    } else {
+        console.log('✅ [3] driveAccessToken موجود');
     }
     
     try {
-        console.log('🔄 جاري تحميل الحالة من Drive...');
+        console.log('🔄 [5] جاري إرسال طلب إلى Drive API...');
         const response = await fetch(`https://www.googleapis.com/drive/v3/files/${DRIVE_CONFIG.fileId}?alt=media`, {
             headers: { 'Authorization': `Bearer ${driveAccessToken}` }
         });
         
+        console.log(`📡 [6] حالة الاستجابة: ${response.status}`);
+        
         if (response.ok) {
             const data = await response.json();
-            const userKey = currentUser?.username || 'guest';
-            const userViewed = data[userKey] || [];
+            console.log('✅ [7] البيانات المستلمة:', data);
             
-            // ✅ تحديث viewedInvoices مباشرة
+            const userKey = currentUser.username;
+            const userViewed = data[userKey] || [];
+            console.log(`📋 [8] بيانات المستخدم ${userKey}:`, userViewed);
+            
             viewedInvoices = new Set(userViewed);
             saveViewedInvoices();
             
-            console.log(`✅ تم تحميل ${viewedInvoices.size} فاتورة من Drive للمستخدم ${userKey}`);
-            console.log('البيانات:', userViewed);
+            console.log(`✅ [9] تم تحميل ${viewedInvoices.size} فاتورة للمستخدم ${userKey}`);
             
-            // ✅ تحديث واجهة المستخدم
+            // تحديث واجهة الجدول
             if (typeof renderData === 'function') {
+                console.log('🔄 [10] جاري تحديث واجهة الجدول...');
                 renderData();
             }
             return true;
         } else if (response.status === 404) {
-            console.log('📄 ملف الحالة غير موجود');
+            console.log('📄 [7] ملف الحالة غير موجود (404)، سيتم إنشاؤه عند أول حفظ');
             return false;
         } else {
-            console.error(`❌ فشل تحميل البيانات: ${response.status}`);
+            const errorText = await response.text();
+            console.error(`❌ [7] فشل التحميل: ${response.status} - ${errorText}`);
             return false;
         }
     } catch (error) {
-        console.error('❌ خطأ في تحميل الحالة من Drive:', error);
+        console.error('❌ [8] خطأ في طلب Drive:', error);
         return false;
     }
 }
@@ -234,33 +258,6 @@ async function refreshAccessToken() {
         console.error('❌ خطأ في تجديد Access Token:', error);
         throw error;
     }
-}
-
-// تحميل من Drive
-async function loadViewedFromDrive() {
-    if (!driveAccessToken) await refreshAccessToken();
-    try {
-        const response = await fetch(`https://www.googleapis.com/drive/v3/files/${DRIVE_CONFIG.fileId}?alt=media`, {
-            headers: { 'Authorization': `Bearer ${driveAccessToken}` }
-        });
-        if (response.ok) {
-            const allData = await response.json();
-            const userKey = currentUser?.username || 'guest';
-// متغيرات حفظ حالة المعاينة
-// ============================================
-let viewedInvoices = new Set(); // تخزين الفواتير التي تمت معاينتها
-
-            saveViewedInvoices();
-            console.log(`✅ تم تحميل ${viewedInvoices.size} فاتورة من Drive`);
-            return true;
-        } else if (response.status === 404) {
-            console.log('⚠️ ملف الحالة غير موجود، سيتم إنشاؤه عند أول حفظ');
-            return true;
-        }
-    } catch (error) {
-        console.error('خطأ في تحميل الحالة من Drive:', error);
-    }
-    return false;
 }
 
 // حفظ إلى Drive
