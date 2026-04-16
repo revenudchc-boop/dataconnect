@@ -738,17 +738,8 @@ function checkSession() {
             updateUserInterface();
             addDatabaseControls();
             
-            // تحميل الفواتير من Drive
+            // ✅ فقط تحميل الفواتير (وهو سيقوم بتحميل العلامات تلقائياً بعد الانتهاء)
             setTimeout(() => loadInvoicesFromDrive(), 500);
-            
-            // ============================================
-            // ✅ تحميل حالة المعاينة (checkbox)
-            // ============================================
-            // 1. تحميل الحالة المحلية أولاً
-            loadViewedInvoices();
-            
-            // 2. تحميل الحالة من Drive بعد ثانية ونصف
-            setTimeout(() => loadViewedFromDrive(), 1500);
             
             // تحديث المستخدمين كل 5 دقائق (للمدير فقط)
             if (currentUser.userType === 'admin') {
@@ -758,22 +749,6 @@ function checkSession() {
                     }
                 }, 5 * 60 * 1000);
             }
-			
-			// ============================================
-// تحميل حالة المعاينة تلقائياً بعد تسجيل الدخول
-// ============================================
-			setTimeout(function checkAndLoad() {
-				if (currentUser && driveAccessToken) {
-					console.log('🔄 تحميل تلقائي للحالة من Drive...');
-					loadViewedFromDrive();
-				} else if (currentUser && !driveAccessToken) {
-					console.log('🔄 انتظار تجديد التوكن...');
-					refreshAccessToken().then(() => loadViewedFromDrive());
-				} else {
-					console.log('⏳ انتظار تسجيل الدخول...');
-					setTimeout(checkAndLoad, 1000);
-				}
-			}, 2000);
         } catch(e) {
             sessionStorage.removeItem('currentUser');
         }
@@ -4588,7 +4563,19 @@ async function loadInvoicesFromDrive() {
         if (!newInvoices.length) throw new Error('لا توجد فواتير');
         invoicesData = newInvoices;
         showProgress('تم التحميل', 100);
+        
+        // ✅ تطبيق تصفية المستخدم أولاً
         currentUser?.isGuest ? filterInvoicesByGuest(currentUser.taxNumber, currentUser.blNumber) : filterInvoicesByUser();
+        
+        // ✅ بعد تحميل الفواتير، قم بتحميل العلامات (checkbox)
+        console.log('✅ تم تحميل الفواتير، جاري تحميل العلامات...');
+        
+        // انتظار اكتمال تحميل العلامات ثم تحديث الجدول
+        await loadViewedFromDrive();
+        
+        // تحديث واجهة المستخدم مرة أخيرة
+        renderData();
+        
         document.getElementById('fileStatus').innerHTML = `<i class="fas fa-check-circle"></i> ✅ تم تحميل ${formatNumberWithCommas(invoicesData.length)} فاتورة من Drive`;
         updateDataSource();
         return true;
