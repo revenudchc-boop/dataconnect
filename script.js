@@ -706,18 +706,38 @@ window.saveUsersManually = async function() {
 // ============================================
 function checkSession() {
     const saved = sessionStorage.getItem('currentUser');
-    if (saved) try {
-        currentUser = JSON.parse(saved);
-        document.getElementById('loginScreen').style.display = 'none';
-        document.getElementById('mainApp').style.display = 'block';
-        updateUserInterface();
-        addDatabaseControls();
-		// تحميل الحالة المحلية أولاً
-		loadViewedInvoices();
-        setTimeout(() => loadInvoicesFromDrive(), 500);
-        setTimeout(() => loadViewedFromDrive(), 1000); // ✅ أضف هذا السطر
-        if (currentUser.userType === 'admin') setInterval(async () => { if (currentUser?.userType === 'admin') await loadUsersFromDrive(); }, 5 * 60 * 1000);
-    } catch { sessionStorage.removeItem('currentUser'); }
+    if (saved) {
+        try {
+            currentUser = JSON.parse(saved);
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('mainApp').style.display = 'block';
+            updateUserInterface();
+            addDatabaseControls();
+            
+            // تحميل الفواتير من Drive
+            setTimeout(() => loadInvoicesFromDrive(), 500);
+            
+            // ============================================
+            // ✅ تحميل حالة المعاينة (checkbox)
+            // ============================================
+            // 1. تحميل الحالة المحلية أولاً
+            loadViewedInvoices();
+            
+            // 2. تحميل الحالة من Drive بعد ثانية ونصف
+            setTimeout(() => loadViewedFromDrive(), 1500);
+            
+            // تحديث المستخدمين كل 5 دقائق (للمدير فقط)
+            if (currentUser.userType === 'admin') {
+                setInterval(async () => { 
+                    if (currentUser?.userType === 'admin') {
+                        await loadUsersFromDrive();
+                    }
+                }, 5 * 60 * 1000);
+            }
+        } catch(e) {
+            sessionStorage.removeItem('currentUser');
+        }
+    }
 }
 
 window.switchLoginTab = function(tab) {
@@ -3284,6 +3304,8 @@ function renderTableView(data) {
         style.textContent = `
             .selected-row { background-color: #e3f2fd !important; border-left: 4px solid #2196f3; }
             .invoice-checkbox, #selectAllCheckbox { width: 18px; height: 18px; cursor: pointer; }
+            .viewed-checkbox { width: 18px; height: 18px; cursor: pointer; }
+            .viewed-cell { text-align: center; width: 50px; }
             .table-toolbar button:disabled { opacity: 0.5; cursor: not-allowed; }
             .data-table tbody tr:hover { background-color: #f5f5f5; }
             .export-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -3311,7 +3333,15 @@ function renderTableView(data) {
                 <thead>
                     <tr>
                         <th style="width:40px;"><input type="checkbox" onclick="toggleAllCheckboxes(this)" id="selectAllCheckbox"></th>
-                        <th>الرقم النهائي</th><th>رقم المسودة</th><th>العميل</th><th>السفينة</th><th>${currentInvoiceType === INVOICE_TYPES.POSTPONED ? 'IB ID / OB ID' : 'رقم البوليصة'}</th><th>تاريخ الرحله</th><th>الإجمالي (EGP)</th><th>المبلغ بالعملة</th>
+                        <th style="width:50px;">معاينة</th>
+                        <th>الرقم النهائي</th>
+                        <th>رقم المسودة</th>
+                        <th>العميل</th>
+                        <th>السفينة</th>
+                        <th>${currentInvoiceType === INVOICE_TYPES.POSTPONED ? 'IB ID / OB ID' : 'رقم البوليصة'}</th>
+                        <th>تاريخ الرحله</th>
+                        <th>الإجمالي (EGP)</th>
+                        <th>المبلغ بالعملة</th>
                     </tr>
                 </thead>
                 <tbody>`;
@@ -3323,6 +3353,7 @@ function renderTableView(data) {
             return;
         }
         const finalNum = inv['final-number'] || '';
+        const draftNum = inv['draft-number'] || '';
         const invoiceTypeDisplay = finalNum.startsWith('P') || finalNum.startsWith('p') ? 'أجل' : 'نقدي';
         const currency = inv['currency'] || 'EGP';
         const exRate = inv['flex-string-06'] || 48.0215;
@@ -3338,8 +3369,16 @@ function renderTableView(data) {
         const isSelected = selectedInvoices.has(idx) ? 'checked' : '';
         const selectedClass = isSelected ? 'selected-row' : '';
         
-        html += `<tr onclick="window.handleRowClick(${idx}, event)" class="${selectedClass}" data-index="${idx}">
+        // مفتاح فريد للفاتورة (لحالة المعاينة)
+        const viewKey = `${finalNum}|${draftNum}`;
+        const isViewed = viewedInvoices.has(viewKey) ? 'checked' : '';
+        
+        html += `<tr onclick="window.handleRowClick(${idx}, event)" class="${selectedClass}" data-index="${idx}" data-key="${viewKey}">
             <td onclick="event.stopPropagation()"><input type="checkbox" class="invoice-checkbox" data-index="${idx}" ${isSelected} onchange="updateSelectedInvoices(${idx}, this.checked)"></td>
+            <td class="viewed-cell" onclick="event.stopPropagation()">
+                <input type="checkbox" class="viewed-checkbox" data-key="${viewKey}" ${isViewed} 
+                       onchange="toggleInvoiceViewed('${viewKey}', this.checked, '${finalNum}', '${draftNum}')">
+            </td>
             <td>${inv['final-number'] || '-'} (${invoiceTypeDisplay})</td>
             <td>${inv['draft-number'] || '-'}</td>
             <td>${(inv['payee-customer-id'] || '-').substring(0,20)}</td>
