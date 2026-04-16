@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>اختبار الاتصال بـ Google Drive</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+            direction: rtl;
+        }
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        }
+        h1 { color: #1e3c72; text-align: center; }
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: center;
+            font-weight: bold;
+        }
+        .status.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .status.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .status.info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .status.warning { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+        button {
+            background: #1e3c72;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 5px;
+            transition: all 0.3s;
+        }
+        button:hover { background: #2a5298; transform: scale(1.02); }
+        button:disabled { background: #6c757d; cursor: not-allowed; }
+        pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 12px;
+            direction: ltr;
+            text-align: left;
+        }
+        .log-area {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 12px;
+            height: 200px;
+            overflow-y: auto;
+            direction: ltr;
+            text-align: left;
+        }
+        .flex-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }
+        hr { margin: 20px 0; }
+        .file-info {
+            background: #e8f4f8;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 اختبار الاتصال بـ Google Drive</h1>
+        <p style="text-align: center; color: #666;">هذا الملف لاختبار القدرة على قراءة وكتابة الملفات على Drive</p>
+        
+        <div id="status" class="status info">⏳ جاهز... اضغط "تسجيل الدخول" للبدء</div>
+        
+        <div class="flex-buttons">
+            <button id="loginBtn" onclick="authenticate()">🔐 تسجيل الدخول بحساب Google</button>
+            <button id="writeBtn" onclick="writeTestFile()" disabled>📝 إنشاء ملف تجريبي على Drive</button>
+            <button id="readBtn" onclick="readTestFile()" disabled>📖 قراءة الملف من Drive</button>
+            <button id="deleteBtn" onclick="deleteTestFile()" disabled>🗑️ حذف الملف التجريبي</button>
+        </div>
+        
+        <div id="fileInfo" class="file-info" style="display: none;">
+            <strong>📄 معلومات الملف:</strong><br>
+            <span id="fileDetails"></span>
+        </div>
+        
+        <hr>
+        <h3>📋 سجل العمليات</h3>
+        <div id="logArea" class="log-area">
+            [系统] جاهز للبدء...
+        </div>
+        
+        <hr>
+        <details>
+            <summary>⚙️ الإعدادات المستخدمة</summary>
+            <pre>
+Client ID: 835944620738-jcl9dh4j2fjuut18vhvik3605t9k20m9.apps.googleusercontent.com
+مجلد Drive: 1FlBXLupfXCICs6xt7xxEE02wr_cjAapC
+النطاق (Scope): https://www.googleapis.com/auth/drive.file
+            </pre>
+        </details>
+    </div>
+
+    <script>
+        // إعدادات OAuth (بدون Client Secret - باستخدام PKCE)
+        const CONFIG = {
+            clientId: '835944620738-jcl9dh4j2fjuut18vhvik3605t9k20m9.apps.googleusercontent.com',
+            apiKey: 'AIzaSyBy4WRI3zkUwlCvbrXpB8o9ZbFMuH4AdGA',
+            scope: 'https://www.googleapis.com/auth/drive.file',
+            folderId: '1FlBXLupfXCICs6xt7xxEE02wr_cjAapC',
+            testFileName: 'test_drive_connection.json'
+        };
+
+        let accessToken = null;
+        let tokenClient = null;
+        let gapiInited = false;
+        let gisInited = false;
+        let testFileId = null;
+
+        // دالة لإضافة رسائل إلى سجل العمليات
+        function addLog(message, type = 'info') {
+            const logArea = document.getElementById('logArea');
+            const time = new Date().toLocaleTimeString('ar-EG');
+            const colors = { success: '#4caf50', error: '#f44336', info: '#2196f3', warning: '#ff9800' };
+            const logEntry = document.createElement('div');
+            logEntry.style.color = colors[type] || '#d4d4d4';
+            logEntry.style.marginBottom = '5px';
+            logEntry.innerHTML = `[${time}] ${message}`;
+            logArea.appendChild(logEntry);
+            logArea.scrollTop = logArea.scrollHeight;
+            console.log(message);
+        }
+
+        function updateStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+        }
+
+        function setButtonsState(writeEnabled, readEnabled, deleteEnabled) {
+            document.getElementById('writeBtn').disabled = !writeEnabled;
+            document.getElementById('readBtn').disabled = !readEnabled;
+            document.getElementById('deleteBtn').disabled = !deleteEnabled;
+        }
+
+        // تهيئة GAPI
+        function gapiLoaded() {
+            addLog('🔄 جاري تحميل GAPI...', 'info');
+            gapi.load('client', initializeGapiClient);
+        }
+
+        async function initializeGapiClient() {
+            try {
+                await gapi.client.init({
+                    apiKey: CONFIG.apiKey,
+                    discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
+                });
+                gapiInited = true;
+                addLog('✅ GAPI initialized بنجاح', 'success');
+                checkAndEnableLogin();
+            } catch (error) {
+                addLog(`❌ خطأ في تهيئة GAPI: ${error.message}`, 'error');
+            }
+        }
+
+        // تهيئة GIS
+        function gisLoaded() {
+            addLog('🔄 جاري تحميل GIS...', 'info');
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CONFIG.clientId,
+                scope: CONFIG.scope,
+                callback: '', // سيتم تعيينه لاحقاً
+            });
+            gisInited = true;
+            addLog('✅ GIS initialized بنجاح', 'success');
+            checkAndEnableLogin();
+        }
+
+        function checkAndEnableLogin() {
+            if (gapiInited && gisInited) {
+                addLog('✅ جميع المكتبات جاهزة! يمكنك تسجيل الدخول', 'success');
+                updateStatus('✅ المكتبات جاهزة - اضغط "تسجيل الدخول"', 'success');
+                document.getElementById('loginBtn').disabled = false;
+            }
+        }
+
+        // المصادقة
+        async function authenticate() {
+            addLog('🔐 بدء عملية المصادقة مع Google...', 'info');
+            updateStatus('🔄 جاري المصادقة... انتظر النافذة المنبثقة', 'info');
+            
+            tokenClient.callback = async (tokenResponse) => {
+                if (tokenResponse.error) {
+                    addLog(`❌ خطأ في المصادقة: ${tokenResponse.error}`, 'error');
+                    updateStatus(`❌ فشل المصادقة: ${tokenResponse.error}`, 'error');
+                    return;
+                }
+                accessToken = tokenResponse.access_token;
+                gapi.client.setToken({ access_token: accessToken });
+                
+                // حفظ التوكن في localStorage للاستخدام المؤقت
+                localStorage.setItem('drive_test_token', accessToken);
+                
+                addLog('✅ تم الحصول على access_token بنجاح!', 'success');
+                updateStatus('✅ تم تسجيل الدخول بنجاح! يمكنك الآن إنشاء ملف', 'success');
+                setButtonsState(true, true, true);
+                
+                // محاولة البحث عن ملف موجود مسبقاً
+                await findExistingTestFile();
+            };
+            
+            tokenClient.requestAccessToken({ prompt: 'consent' });
+        }
+
+        // البحث عن ملف التجربة الموجود
+        async function findExistingTestFile() {
+            if (!accessToken) return;
+            
+            try {
+                addLog('🔍 البحث عن ملف تجريبي موجود...', 'info');
+                const response = await gapi.client.drive.files.list({
+                    q: `name='${CONFIG.testFileName}' and '${CONFIG.folderId}' in parents and trashed=false`,
+                    fields: 'files(id, name, createdTime, modifiedTime)'
+                });
+                
+                const files = response.result.files;
+                if (files && files.length > 0) {
+                    testFileId = files[0].id;
+                    const created = new Date(files[0].createdTime).toLocaleString('ar-EG');
+                    const modified = new Date(files[0].modifiedTime).toLocaleString('ar-EG');
+                    addLog(`📄 وجد ملف موجود مسبقاً - المعرف: ${testFileId}`, 'info');
+                    document.getElementById('fileDetails').innerHTML = `
+                        <strong>المعرف:</strong> ${testFileId}<br>
+                        <strong>تاريخ الإنشاء:</strong> ${created}<br>
+                        <strong>آخر تعديل:</strong> ${modified}
+                    `;
+                    document.getElementById('fileInfo').style.display = 'block';
+                } else {
+                    addLog('📄 لا يوجد ملف تجريبي سابق', 'info');
+                }
+            } catch (error) {
+                addLog(`⚠️ خطأ في البحث عن الملف: ${error.message}`, 'warning');
+            }
+        }
+
+        // إنشاء ملف تجريبي
+        async function writeTestFile() {
+            if (!accessToken) {
+                addLog('❌ لا يوجد access_token. يرجى تسجيل الدخول أولاً', 'error');
+                return;
+            }
+            
+            updateStatus('🔄 جاري إنشاء ملف على Drive...', 'info');
+            addLog('📝 بدء إنشاء ملف تجريبي على Drive...', 'info');
+            
+            const testData = {
+                testName: "اختبار الاتصال بـ Drive",
+                timestamp: new Date().toISOString(),
+                message: "تم إنشاء هذا الملف بنجاح! ✅",
+                user: "DCHC Invoice System",
+                version: "1.0",
+                viewedInvoices: ["C25-25656|269044", "P25-11021|267786"]  // مثال على البيانات التي سنخزنها
+            };
+            
+            const fileMetadata = {
+                name: CONFIG.testFileName,
+                parents: [CONFIG.folderId],
+                mimeType: 'application/json'
+            };
+            
+            const form = new FormData();
+            form.append('metadata', new Blob([JSON.stringify(fileMetadata)], { type: 'application/json' }));
+            form.append('file', new Blob([JSON.stringify(testData, null, 2)], { type: 'application/json' }));
+            
+            try {
+                const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${accessToken}` },
+                    body: form
+                });
+                
+                const data = await response.json();
+                
+                if (data.id) {
+                    testFileId = data.id;
+                    addLog(`✅ تم إنشاء الملف بنجاح!`, 'success');
+                    addLog(`📄 معرف الملف: ${data.id}`, 'success');
+                    addLog(`🔗 رابط الملف: https://drive.google.com/file/d/${data.id}/view`, 'success');
+                    updateStatus('✅ تم إنشاء الملف بنجاح!', 'success');
+                    
+                    document.getElementById('fileDetails').innerHTML = `
+                        <strong>المعرف:</strong> ${data.id}<br>
+                        <strong>اسم الملف:</strong> ${CONFIG.testFileName}<br>
+                        <strong>تاريخ الإنشاء:</strong> ${new Date().toLocaleString('ar-EG')}
+                    `;
+                    document.getElementById('fileInfo').style.display = 'block';
+                    
+                    // عرض محتوى الملف الذي تم إنشاؤه
+                    addLog(`📦 محتوى الملف: ${JSON.stringify(testData, null, 2)}`, 'info');
+                } else {
+                    throw new Error(data.error?.message || 'فشل إنشاء الملف');
+                }
+            } catch (error) {
+                addLog(`❌ فشل إنشاء الملف: ${error.message}`, 'error');
+                updateStatus('❌ فشل إنشاء الملف', 'error');
+            }
+        }
+
+        // قراءة الملف من Drive
+        async function readTestFile() {
+            if (!accessToken) {
+                addLog('❌ لا يوجد access_token. يرجى تسجيل الدخول أولاً', 'error');
+                return;
+            }
+            
+            if (!testFileId) {
+                await findExistingTestFile();
+                if (!testFileId) {
+                    addLog('❌ لا يوجد ملف تجريبي. قم بإنشاء ملف أولاً', 'error');
+                    return;
+                }
+            }
+            
+            updateStatus('🔄 جاري قراءة الملف من Drive...', 'info');
+            addLog(`📖 محاولة قراءة الملف (ID: ${testFileId})...`, 'info');
+            
+            try {
+                const response = await gapi.client.drive.files.get({
+                    fileId: testFileId,
+                    alt: 'media'
+                });
+                
+                const data = JSON.parse(response.body);
+                addLog(`✅ تم قراءة الملف بنجاح!`, 'success');
+                addLog(`📦 محتوى الملف:`, 'info');
+                addLog(JSON.stringify(data, null, 2), 'info');
+                updateStatus('✅ تم قراءة الملف بنجاح!', 'success');
+            } catch (error) {
+                addLog(`❌ فشل قراءة الملف: ${error.message}`, 'error');
+                updateStatus('❌ فشل قراءة الملف', 'error');
+            }
+        }
+
+        // حذف الملف التجريبي
+        async function deleteTestFile() {
+            if (!accessToken) {
+                addLog('❌ لا يوجد access_token. يرجى تسجيل الدخول أولاً', 'error');
+                return;
+            }
+            
+            if (!testFileId) {
+                await findExistingTestFile();
+                if (!testFileId) {
+                    addLog('❌ لا يوجد ملف تجريبي للحذف', 'error');
+                    return;
+                }
+            }
+            
+            if (!confirm('هل أنت متأكد من حذف الملف التجريبي من Drive؟')) {
+                addLog('🚫 تم إلغاء عملية الحذف', 'warning');
+                return;
+            }
+            
+            updateStatus('🔄 جاري حذف الملف...', 'info');
+            addLog(`🗑️ محاولة حذف الملف (ID: ${testFileId})...`, 'warning');
+            
+            try {
+                await gapi.client.drive.files.delete({
+                    fileId: testFileId
+                });
+                
+                addLog(`✅ تم حذف الملف بنجاح!`, 'success');
+                updateStatus('✅ تم حذف الملف بنجاح!', 'success');
+                testFileId = null;
+                document.getElementById('fileInfo').style.display = 'none';
+            } catch (error) {
+                addLog(`❌ فشل حذف الملف: ${error.message}`, 'error');
+                updateStatus('❌ فشل حذف الملف', 'error');
+            }
+        }
+
+        // بدء التهيئة عند تحميل الصفحة
+        window.onload = () => {
+            addLog('🚀 بدء تهيئة مكتبات Google...', 'info');
+            
+            // تحميل التوكن المخزن مسبقاً
+            const savedToken = localStorage.getItem('drive_test_token');
+            if (savedToken) {
+                accessToken = savedToken;
+                addLog('🔑 تم استعادة access_token من التخزين المحلي', 'info');
+            }
+            
+            // تهيئة GAPI و GIS
+            gapiLoaded();
+            gisLoaded();
+        };
+    </script>
+</body>
+</html>
