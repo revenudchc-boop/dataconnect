@@ -759,11 +759,21 @@ function checkSession() {
                 }, 5 * 60 * 1000);
             }
 			
-			// ✅ أضف هذا السطر هنا
-            setTimeout(() => {
-                console.log('🔄 تنفيذ loadViewedFromDrive من checkSession');
-                loadViewedFromDrive();
-            }, 2000);
+			// ============================================
+// تحميل حالة المعاينة تلقائياً بعد تسجيل الدخول
+// ============================================
+			setTimeout(function checkAndLoad() {
+				if (currentUser && driveAccessToken) {
+					console.log('🔄 تحميل تلقائي للحالة من Drive...');
+					loadViewedFromDrive();
+				} else if (currentUser && !driveAccessToken) {
+					console.log('🔄 انتظار تجديد التوكن...');
+					refreshAccessToken().then(() => loadViewedFromDrive());
+				} else {
+					console.log('⏳ انتظار تسجيل الدخول...');
+					setTimeout(checkAndLoad, 1000);
+				}
+			}, 2000);
         } catch(e) {
             sessionStorage.removeItem('currentUser');
         }
