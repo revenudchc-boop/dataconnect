@@ -118,7 +118,6 @@ async function loadViewedFromDrive() {
     }
 }
 
-// حفظ الحالة إلى Drive
 async function saveViewedToDrive() {
     if (!driveAccessToken) {
         await refreshAccessToken();
@@ -127,14 +126,34 @@ async function saveViewedToDrive() {
     try {
         // 1. قراءة البيانات الحالية من الملف أولاً
         let allData = {};
-        const readResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${DRIVE_CONFIG.fileId}?alt=media`, {
-            headers: { 'Authorization': `Bearer ${driveAccessToken}` }
-        });
-        
-        if (readResponse.ok) {
-            allData = await readResponse.json();
-        } else if (readResponse.status !== 404) {
-            console.warn(`⚠️ لم نتمكن من قراءة الملف الحالي: ${readResponse.status}`);
+        try {
+            const readResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${DRIVE_CONFIG.fileId}?alt=media`, {
+                headers: { 'Authorization': `Bearer ${driveAccessToken}` }
+            });
+            
+            if (readResponse.ok) {
+                const text = await readResponse.text();
+                // ✅ التحقق من أن الملف ليس فارغاً
+                if (text && text.trim()) {
+                    try {
+                        allData = JSON.parse(text);
+                    } catch (e) {
+                        console.warn('⚠️ محتوى الملف غير صالح (JSON parse error)، سيتم إنشاء بيانات جديدة');
+                        allData = {};
+                    }
+                } else {
+                    console.log('📄 الملف فارغ، سيتم إنشاء بيانات جديدة');
+                    allData = {};
+                }
+            } else if (readResponse.status === 404) {
+                console.log('📄 ملف الحالة غير موجود، سيتم إنشاؤه');
+                allData = {};
+            } else {
+                console.warn(`⚠️ لم نتمكن من قراءة الملف الحالي: ${readResponse.status}`);
+            }
+        } catch (readError) {
+            console.warn('⚠️ خطأ في قراءة الملف:', readError);
+            allData = {};
         }
         
         // 2. تحديث بيانات المستخدم الحالي
