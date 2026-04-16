@@ -758,6 +758,12 @@ function checkSession() {
                     }
                 }, 5 * 60 * 1000);
             }
+			
+			// ✅ أضف هذا السطر هنا
+            setTimeout(() => {
+                console.log('🔄 تنفيذ loadViewedFromDrive من checkSession');
+                loadViewedFromDrive();
+            }, 2000);
         } catch(e) {
             sessionStorage.removeItem('currentUser');
         }
