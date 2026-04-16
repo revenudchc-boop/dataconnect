@@ -145,6 +145,97 @@ async function saveViewedToDrive() {
 // متغير لتخزين الشعار
 let companyLogoBase64 = null;
 
+
+// ============================================
+// إعدادات Drive المباشرة (بدون Web App)
+// ============================================
+const DRIVE_CONFIG = {
+    clientId: '835944620738-jcl9dh4j2fjuut18vhvik3605t9k20m9.apps.googleusercontent.com',
+    clientSecret: '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',
+    refreshToken: '1//03kV3LGjfCBsRCgYIARAAGAMSNwF-L9Ir63Sh_huDCTInw3WZZJDLDPeHbnAi0HSRfDwIROX4jMjFpmUpQJ7kyIoC85bRKtCXd70',
+    fileId: '1DuActXaKPadEJ843EUlEAAmU7CBHQAVt'
+};
+
+let driveAccessToken = null;
+
+// تجديد Access Token باستخدام Refresh Token
+async function refreshAccessToken() {
+    const response = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+            client_id: DRIVE_CONFIG.clientId,
+            client_secret: DRIVE_CONFIG.clientSecret,
+            refresh_token: DRIVE_CONFIG.refreshToken,
+            grant_type: 'refresh_token'
+        })
+    });
+    const data = await response.json();
+    driveAccessToken = data.access_token;
+    console.log('✅ تم تجديد Access Token');
+    return driveAccessToken;
+}
+
+// تحميل من Drive
+async function loadViewedFromDrive() {
+    if (!driveAccessToken) await refreshAccessToken();
+    try {
+        const response = await fetch(`https://www.googleapis.com/drive/v3/files/${DRIVE_CONFIG.fileId}?alt=media`, {
+            headers: { 'Authorization': `Bearer ${driveAccessToken}` }
+        });
+        if (response.ok) {
+            const allData = await response.json();
+            const userKey = currentUser?.username || 'guest';
+            viewedInvoices = new Set(allData[userKey] || []);
+            saveViewedInvoices();
+            console.log(`✅ تم تحميل ${viewedInvoices.size} فاتورة من Drive`);
+            return true;
+        } else if (response.status === 404) {
+            console.log('⚠️ ملف الحالة غير موجود، سيتم إنشاؤه عند أول حفظ');
+            return true;
+        }
+    } catch (error) {
+        console.error('خطأ في تحميل الحالة من Drive:', error);
+    }
+    return false;
+}
+
+// حفظ إلى Drive
+async function saveViewedToDrive() {
+    if (!driveAccessToken) await refreshAccessToken();
+    try {
+        // قراءة الملف الحالي أولاً
+        let allData = {};
+        const readResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${DRIVE_CONFIG.fileId}?alt=media`, {
+            headers: { 'Authorization': `Bearer ${driveAccessToken}` }
+        });
+        if (readResponse.ok) {
+            allData = await readResponse.json();
+        }
+        
+        const userKey = currentUser?.username || 'guest';
+        allData[userKey] = [...viewedInvoices];
+        allData.lastUpdated = new Date().toISOString();
+        
+        const response = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${DRIVE_CONFIG.fileId}?uploadType=media`, {
+            method: 'PATCH',
+            headers: {
+                'Authorization': `Bearer ${driveAccessToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(allData)
+        });
+        
+        if (response.ok) {
+            console.log('✅ تم حفظ الحالة في Drive');
+            return true;
+        }
+    } catch (error) {
+        console.error('خطأ في حفظ الحالة إلى Drive:', error);
+    }
+    return false;
+}
+
 // ============================================
 // دوال تنسيق الأرقام
 // ============================================
