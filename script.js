@@ -83,8 +83,7 @@ let selectedInvoices = new Set();
 // ============================================
 // إعدادات Web App للمزامنة
 // ============================================
-const SYNC_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwCYp47kfYsDFDkFxDfSHOccYk0YVq179pyQCYGtvPeVCNr_njHt711-h4QuT1YQqch/exec';
-
+const SYNC_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwhI-WpSqD2jmS0-dENEDACYFYV9JiS5r0snG0haJqtBJTSROXrtBHmHOY5-_5c_Pf9/exec';
 // دالة لتحميل حالة المعاينة من Drive
 async function loadViewedFromDrive() {
     try {
