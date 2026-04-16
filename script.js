@@ -6021,3 +6021,27 @@ function debounce(func, wait) {
     let timeout;
     return (...args) => { clearTimeout(timeout); timeout = setTimeout(() => func(...args), wait); };
 }
+
+
+// ============================================
+// تحميل العلامات مباشرة (مستقل عن باقي البرنامج)
+// ============================================
+(function forceLoadViewed() {
+    console.log('🔄 [forceLoadViewed] بدء التنفيذ');
+    
+    // انتظار وجود currentUser
+    const checkInterval = setInterval(() => {
+        if (currentUser) {
+            clearInterval(checkInterval);
+            console.log('✅ [forceLoadViewed] تم العثور على currentUser:', currentUser.username);
+            
+            // انتظار قليلاً ثم تحميل العلامات
+            setTimeout(() => {
+                console.log('🔄 [forceLoadViewed] جاري تحميل العلامات...');
+                loadViewedFromDrive();
+            }, 2000);
+        } else {
+            console.log('⏳ [forceLoadViewed] انتظار currentUser...');
+        }
+    }, 500);
+})();
