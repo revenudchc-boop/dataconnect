@@ -1408,7 +1408,10 @@ function parseCreditNode(creditElement) {
 // ============================================
 // دوال البحث المتقدم - معدلة لاستخدام finalized-date
 // ============================================
-window.applyAdvancedSearch = function() {
+window.applyAdvancedSearch = async function() {
+    console.log('🔍 [بحث] بدء البحث');
+    console.log('📊 عدد الفواتير الكلي:', invoicesData.length);
+    
     if (!invoicesData.length) { filteredInvoices = []; renderData(); return; }
     
     const [final, draft, cust, vessel, bl, cont, status, from, to, invType, contractCustomerId, viewedStatus] = [
@@ -1419,11 +1422,58 @@ window.applyAdvancedSearch = function() {
 
     let tempInvoices = [...invoicesData];
 
-    // ... (تصفية المستخدم الضيف والمستخدم العادي) ...
+    if (currentUser?.isGuest) {
+        const { taxNumber, blNumber } = currentUser;
+        tempInvoices = tempInvoices.filter(inv => {
+            let match = true;
+            if (taxNumber) {
+                const num = inv['final-number'] || '';
+                if (num.startsWith('P') || num.startsWith('p')) return false;
+                const payeeMatch = (inv['payee-customer-id'] || '').toLowerCase().includes(taxNumber.toLowerCase());
+                const contractMatch = (inv['contract-customer-id'] || '').toLowerCase().includes(taxNumber.toLowerCase());
+                match = match && (payeeMatch || contractMatch);
+            }
+            if (blNumber) match = match && (inv['key-word2'] || '').toLowerCase().includes(blNumber.toLowerCase());
+            return match;
+        });
+    } 
+    else if (currentUser && currentUser.userType !== 'admin' && !currentUser.isGuest) {
+        let allowedIds = [];
+        if (currentUser.contractCustomerId) allowedIds.push(currentUser.contractCustomerId);
+        if (currentUser.customerIds && Array.isArray(currentUser.customerIds)) {
+            allowedIds = allowedIds.concat(currentUser.customerIds);
+        }
+        allowedIds = [...new Set(allowedIds.map(id => id.toLowerCase()))];
+        
+        console.log('✅ allowedIds للمستخدم:', allowedIds);
+        
+        if (allowedIds.length === 0) {
+            tempInvoices = [];
+        } else {
+            tempInvoices = tempInvoices.filter(inv => {
+                const payeeId = (inv['payee-customer-id'] || '').toLowerCase();
+                const contractId = (inv['contract-customer-id'] || '').toLowerCase();
+                return allowedIds.some(id => payeeId === id || contractId === id);
+            });
+        }
+    }
 
+    console.log('📊 عدد الفواتير بعد تصفية المستخدم (tempInvoices):', tempInvoices.length);
+    
+    // ✅ تأكد من تحميل العلامات قبل البحث
+    if (viewedStatus && viewedInvoices.size === 0 && currentUser) {
+        console.log('🔄 viewedInvoices فارغة، جاري التحميل من Drive...');
+        await loadViewedFromDrive();
+    }
+    
     const searched = tempInvoices.filter(inv => {
-		 // ✅ تصفية حسب صلاحيات المستخدم (أضف هذا السطر)
-		if (!checkIfInvoiceBelongsToUser(inv)) return false;
+        // ✅ تصفية حسب صلاحيات المستخدم (طبقة أمان إضافية)
+        const belongsToUser = checkIfInvoiceBelongsToUser(inv);
+        if (!belongsToUser) {
+            console.log('❌ فاتورة لا تخص المستخدم:', inv['final-number']);
+            return false;
+        }
+        
         if (final && !(inv['final-number'] || '').toLowerCase().includes(final)) return false;
         if (draft && !(inv['draft-number'] || '').toLowerCase().includes(draft)) return false;
         if (cust) {
@@ -1460,30 +1510,26 @@ window.applyAdvancedSearch = function() {
             }
         }
         
-		// ✅ شرط حالة المعاينة (للمستخدم الحالي فقط)
-		if (viewedStatus) {
-			const viewKey = getInvoiceKey(inv);
-			const isViewed = viewedInvoices.has(viewKey);
-			
-			// أولاً: تأكد من أن الفاتورة تخص المستخدم الحالي (بناءً على صلاحياته)
-			const userKey = currentUser?.username || 'guest';
-			const belongsToUser = checkIfInvoiceBelongsToUser(inv, userKey);
-			
-			// إذا كانت الفاتورة لا تخص المستخدم، تجاهلها تماماً
-			if (!belongsToUser) return false;
-			
-			// ثم طبق تصفية حالة المعاينة
-			if (viewedStatus === 'viewed' && !isViewed) return false;
-			if (viewedStatus === 'not_viewed' && isViewed) return false;
-		}
+        // ✅ شرط حالة المعاينة
+        if (viewedStatus) {
+            const viewKey = getInvoiceKey(inv);
+            const isViewed = viewedInvoices.has(viewKey);
+            
+            if (viewedStatus === 'viewed' && !isViewed) return false;
+            if (viewedStatus === 'not_viewed' && isViewed) return false;
+        }
         
         return true;
     });
 
+    console.log('📊 عدد الفواتير بعد البحث (searched):', searched.length);
+    
     filteredInvoices = searched;
     currentPage = 1;
     clearSelectedInvoices();
     renderData();
+    
+    console.log('📊 عدد الفواتير المعروضة (filteredInvoices):', filteredInvoices.length);
     showNotification(`تم العثور على ${formatNumberWithCommas(filteredInvoices.length)} فاتورة`, filteredInvoices.length ? 'success' : 'info');
 };
 
