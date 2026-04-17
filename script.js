@@ -381,6 +381,541 @@ function parseFinalNumber(finalNumber) {
     return { type: '', year: 0, number: 0 };
 }
 
+
+// استخراج الرقم التسلسلي من رقم الفاتورة النهائي (بغض النظر عن البادئة مثل C25- أو P25- أو C26-...)
+function getInvoiceSerialNumber(finalNumber) {
+    if (!finalNumber) return 0;
+    // البحث عن الرقم بعد آخر شرطة (مثلاً C25-12345 → 12345)
+    const parts = finalNumber.split('-');
+    if (parts.length > 1) {
+        const numStr = parts[parts.length - 1];
+        const num = parseInt(numStr, 10);
+        return isNaN(num) ? 0 : num;
+    }
+    return 0;
+}
+
+// دالة إنشاء HTML للتقرير المفصل
+function generateReportHTML(invoices, reportInfo) {
+    const { fromDate, toDate, lineOperatorsText, totals, count } = reportInfo;
+    const currentDate = new Date().toISOString().slice(0,10).replace(/-/g, '/');
+    
+    let rows = '';
+    invoices.forEach((inv, idx) => {
+        const finalNum = inv['final-number'] || '';
+        const invoiceDate = (inv['finalized-date'] || inv['created'] || '').slice(0,10).replace(/-/g, '/');
+        const vessel = inv['key-word1'] || '-';
+        const voyageDate = (inv['flex-date-02'] || '').slice(0,10).replace(/-/g, '/');
+        const currency = inv['currency'] || 'EGP';
+        const exchangeRate = inv['flex-string-06'] || 48.0215;
+        const martyr = finalNum.startsWith('P') ? 0 : 5;
+        const total = (inv['total-total'] || 0) + martyr;
+        
+        let usadAmount = '-', usadTax = '-', egpAmount = '-', egpTax = '-', finalDisplay = '';
+        if (currency === 'USAD') {
+            usadAmount = ((inv['total-charges'] || 0) / exchangeRate).toFixed(2);
+            usadTax = ((inv['total-taxes'] || 0) / exchangeRate).toFixed(2);
+            finalDisplay = (total / exchangeRate).toFixed(2) + ' USAD';
+        } else {
+            egpAmount = (inv['total-charges'] || 0).toFixed(2);
+            egpTax = (inv['total-taxes'] || 0).toFixed(2);
+            finalDisplay = total.toFixed(2) + ' EGP';
+        }
+        
+        rows += `<tr>
+            <td>${idx+1}</td>
+            <td>${finalNum}</td>
+            <td>${invoiceDate}</td>
+            <td>${vessel}</td>
+            <td>${voyageDate}</td>
+            <td>${currency}</td>
+            <td>${usadAmount !== '-' ? usadAmount : '-'}</td>
+            <td>${usadTax !== '-' ? usadTax : '-'}</td>
+            <td>${egpAmount !== '-' ? egpAmount : '-'}</td>
+            <td>${egpTax !== '-' ? egpTax : '-'}</td>
+            <td>${finalDisplay}</td>
+        </tr>`;
+    });
+
+    return `<!DOCTYPE html>
+    <html dir="rtl">
+    <head>
+        <meta charset="UTF-8">
+        <title>تقرير الفواتير المحددة</title>
+        <style>
+            body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; padding: 20px; direction: rtl; background: white; }
+            .report-header { background: linear-gradient(135deg, #1e3c72, #2a5298); color: white; padding: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+            .logo-area { display: flex; align-items: center; gap: 15px; }
+            .logo-placeholder { width: 70px; height: 70px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 3px solid #ffd700; }
+            .logo-placeholder i { font-size: 2.5em; color: #1e3c72; }
+            .company-title h1 { font-size: 1.3em; margin: 0; }
+            .company-title p { margin: 5px 0 0; font-size: 0.7em; }
+            .tax-info { font-size: 0.8em; background: rgba(255,255,255,0.2); padding: 8px 15px; border-radius: 8px; }
+            .report-info { background: #f8f9fa; padding: 12px 20px; display: flex; flex-wrap: wrap; gap: 15px; font-weight: bold; border-bottom: 1px solid #ddd; }
+            .report-table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 0.75em; }
+            .report-table th, .report-table td { border: 1px solid #aaa; padding: 8px 4px; text-align: center; }
+            .report-table th { background: #4361ee; color: white; }
+            .total-row { background: #e8f4f8; font-weight: bold; }
+            .summary-section { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px; }
+            .summary-box { flex: 1; border-right: 4px solid #4361ee; background: #f8f9fa; padding: 12px; border-radius: 8px; }
+            .summary-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dashed #ccc; }
+            .summary-row.total { font-weight: bold; color: #1e3c72; border-bottom: none; }
+            .report-footer { text-align: center; margin-top: 20px; padding: 10px; background: #1e3c72; color: white; font-size: 0.7em; }
+            @media print { body { padding: 0; } }
+        </style>
+    </head>
+    <body>
+        <div class="report-header">
+            <div class="logo-area">
+                <div class="logo-placeholder"><i class="fas fa-ship"></i></div>
+                <div class="company-title">
+                    <h1>شركة دمياط لتداول الحاويات و البضائع</h1>
+                    <p>دمياط - المنطقة الحرة - ميناء دمياط | هاتف: 0572290103</p>
+                </div>
+            </div>
+            <div class="tax-info"><i class="fas fa-building"></i> الرقم الضريبي: 100/221/823</div>
+        </div>
+        <div class="report-info">
+            <span><strong>تقرير الفواتير المحددة</strong></span>
+            <span><strong>الخط الملاحي:</strong> ${lineOperatorsText}</span>
+            ${fromDate && toDate ? `<span><strong>الفترة:</strong> من ${fromDate} إلى ${toDate}</span>` : ''}
+            <span><strong>تاريخ التقرير:</strong> ${currentDate}</span>
+            <span><strong>عدد الفواتير:</strong> ${count}</span>
+        </div>
+        <table class="report-table">
+            <thead><tr><th>م</th><th>رقم الفاتورة</th><th>تاريخ الفاتورة</th><th>اسم السفينة</th><th>تاريخ الرحلة</th><th>العملة</th><th>المبلغ (USAD)</th><th>الضريبة (USAD)</th><th>المبلغ (EGP)</th><th>الضريبة (EGP)</th><th>الإجمالي النهائي</th></tr></thead>
+            <tbody>${rows}</tbody>
+            <tfoot>
+                <tr class="total-row"><td colspan="6" style="text-align:left;">الإجمالي العام</td>
+                <td>${totals.usadCharges.toFixed(2)}</td><td>${totals.usadTaxes.toFixed(2)}</td>
+                <td>${totals.egpCharges.toFixed(2)}</td><td>${totals.egpTaxes.toFixed(2)}</td><td>-</td></tr>
+            </tfoot>
+        </table>
+        <div class="summary-section">
+            <div class="summary-box"><h4>📊 ملخص العملة USAD</h4>
+                <div class="summary-row"><span>إجمالي المبلغ (USAD):</span><span>${totals.usadCharges.toFixed(2)} دولار</span></div>
+                <div class="summary-row"><span>إجمالي الضريبة (USAD):</span><span>${totals.usadTaxes.toFixed(2)} دولار</span></div>
+                <div class="summary-row total"><span>الإجمالي الكلي (USAD):</span><span>${totals.usadTotal.toFixed(2)} دولار</span></div>
+            </div>
+            <div class="summary-box"><h4>📊 ملخص العملة EGP</h4>
+                <div class="summary-row"><span>إجمالي المبلغ (EGP):</span><span>${totals.egpCharges.toFixed(2)} جنيه</span></div>
+                <div class="summary-row"><span>إجمالي الضريبة (EGP):</span><span>${totals.egpTaxes.toFixed(2)} جنيه</span></div>
+                <div class="summary-row total"><span>الإجمالي الكلي (EGP):</span><span>${totals.egpTotal.toFixed(2)} جنيه</span></div>
+            </div>
+            <div class="summary-box"><h4>📊 إجمالي عام</h4>
+                <div class="summary-row"><span>إجمالي جميع الفواتير:</span><span>${(totals.usadTotal + totals.egpTotal).toFixed(2)} (باختلاف العملة)</span></div>
+                <div class="summary-row"><span>عدد الفواتير:</span><span>${count}</span></div>
+                <div class="summary-row"><span>متوسط قيمة الفاتورة:</span><span>${(totals.grandTotal/count).toFixed(2)}</span></div>
+            </div>
+        </div>
+        <div class="report-footer">
+            <p>شكراً لتعاملكم مع الشركة - تم إنشاء هذا التقرير إلكترونياً - تاريخ الطباعة: ${currentDate}</p>
+        </div>
+    </body>
+    </html>`;
+}
+
+// ============================================
+// تصدير تقرير مفصل للفواتير المحددة
+// ============================================
+async function exportSelectedReport() {
+    if (selectedInvoices.size === 0) {
+        showNotification('لم يتم تحديد أي فواتير', 'warning');
+        return;
+    }
+
+    // الحصول على الفواتير المحددة
+    const selectedInvoicesData = [];
+    for (let idx of selectedInvoices) {
+        if (idx >= 0 && idx < invoicesData.length) {
+            selectedInvoicesData.push(invoicesData[idx]);
+        }
+    }
+
+    if (selectedInvoicesData.length === 0) {
+        showNotification('لا توجد بيانات للفواتير المحددة', 'error');
+        return;
+    }
+
+    // ترتيب الفواتير حسب الرقم التسلسلي الفعلي (بعد البادئة)
+    selectedInvoicesData.sort((a, b) => {
+        const numA = getInvoiceSerialNumber(a['final-number']);
+        const numB = getInvoiceSerialNumber(b['final-number']);
+        return numA - numB;
+    });
+
+    // الحصول على فترة البحث من حقول التاريخ (إذا كانت موجودة)
+    const dateFromElem = document.getElementById('searchDateFrom');
+    const dateToElem = document.getElementById('searchDateTo');
+    let fromDate = dateFromElem?.value || '';
+    let toDate = dateToElem?.value || '';
+    if (fromDate && toDate) {
+        fromDate = fromDate.replace(/-/g, '/');
+        toDate = toDate.replace(/-/g, '/');
+    }
+
+    // استخراج الخطوط الملاحية الفريدة (contract-customer-id)
+    const lineOperators = [...new Set(selectedInvoicesData.map(inv => inv['contract-customer-id']).filter(op => op))];
+    const lineOperatorsText = lineOperators.length ? lineOperators.join(', ') : 'الكل';
+
+    // حساب الإجماليات
+    let totals = {
+        usadCharges: 0, usadTaxes: 0, usadTotal: 0,
+        egpCharges: 0, egpTaxes: 0, egpTotal: 0,
+        grandTotal: 0
+    };
+
+    selectedInvoicesData.forEach(inv => {
+        const currency = inv['currency'] || 'EGP';
+        const exchangeRate = inv['flex-string-06'] || 48.0215;
+        const martyr = (inv['final-number'] || '').startsWith('P') ? 0 : 5;
+        const total = (inv['total-total'] || 0) + martyr;
+
+        if (currency === 'USAD') {
+            totals.usadCharges += (inv['total-charges'] || 0) / exchangeRate;
+            totals.usadTaxes += (inv['total-taxes'] || 0) / exchangeRate;
+            totals.usadTotal += total / exchangeRate;
+        } else {
+            totals.egpCharges += (inv['total-charges'] || 0);
+            totals.egpTaxes += (inv['total-taxes'] || 0);
+            totals.egpTotal += total;
+        }
+        totals.grandTotal += total;
+    });
+
+    // بناء HTML التقرير
+    const reportHtml = generateReportHTML(selectedInvoicesData, {
+        fromDate, toDate,
+        lineOperatorsText,
+        totals,
+        count: selectedInvoicesData.length
+    });
+
+        // ✅ عرض التقرير في نافذة معاينة بدلاً من التحميل المباشر
+    showReportPreview(reportHtml);
+
+    if (typeof window.jspdf === 'undefined' || typeof window.html2canvas === 'undefined') {
+        showNotification('جاري تحميل مكتبات PDF...', 'info');
+        document.body.removeChild(tempDiv);
+        return;
+    }
+
+    showProgress('جاري إنشاء التقرير...', 30);
+    try {
+        await new Promise(resolve => setTimeout(resolve, 200));
+        const canvas = await html2canvas(tempDiv, {
+            scale: 1.5,
+            backgroundColor: '#ffffff',
+            logging: false,
+            useCORS: true,
+            windowWidth: tempDiv.scrollWidth,
+            windowHeight: tempDiv.scrollHeight
+        });
+        const imgData = canvas.toDataURL('image/jpeg', 0.85);
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({
+            orientation: 'landscape',
+            unit: 'mm',
+            format: 'a4',
+            compress: true
+        });
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+        pdf.save(`تقرير_فواتير_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.pdf`);
+        showNotification('تم تصدير التقرير بنجاح', 'success');
+    } catch (error) {
+        console.error('خطأ في إنشاء PDF:', error);
+        showNotification('حدث خطأ في إنشاء التقرير', 'error');
+    } finally {
+        document.body.removeChild(tempDiv);
+        setTimeout(hideProgress, 1500);
+    }
+}
+
+// ============================================
+// عرض التقرير في نافذة معاينة (Modal)
+// ============================================
+function showReportPreview(reportHtml) {
+    // إنشاء عنصر modal ديناميكياً
+    const modal = document.createElement('div');
+    modal.id = 'reportPreviewModal';
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.7);
+        z-index: 100000;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        direction: rtl;
+    `;
+    
+    const modalContent = document.createElement('div');
+    modalContent.style.cssText = `
+        background: white;
+        width: 90%;
+        max-width: 1200px;
+        height: 90%;
+        border-radius: 12px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    `;
+    
+    // شريط العنوان والأزرار
+    const modalHeader = document.createElement('div');
+    modalHeader.style.cssText = `
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 20px;
+        background: #1e3c72;
+        color: white;
+        border-bottom: 1px solid #2a5298;
+    `;
+    modalHeader.innerHTML = `
+        <h3 style="margin:0;"><i class="fas fa-file-pdf"></i> معاينة التقرير</h3>
+        <div>
+            <button id="printReportBtn" class="btn-preview" style="background:#10b981; margin-left:10px;"><i class="fas fa-print"></i> طباعة</button>
+            <button id="downloadReportPdfBtn" class="btn-preview" style="background:#4361ee; margin-left:10px;"><i class="fas fa-download"></i> تحميل PDF</button>
+            <button id="closePreviewBtn" class="btn-preview" style="background:#e63946;"><i class="fas fa-times"></i> إغلاق</button>
+        </div>
+    `;
+    
+    // إضافة أزرار CSS
+    const style = document.createElement('style');
+    style.textContent = `
+        .btn-preview {
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.2s;
+        }
+        .btn-preview:hover {
+            transform: scale(1.02);
+            opacity: 0.9;
+        }
+        .report-content {
+            flex: 1;
+            overflow: auto;
+            padding: 20px;
+            background: #f0f2f5;
+        }
+        .report-content > div {
+            max-width: 1100px;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+    `;
+    modalContent.appendChild(style);
+    
+    // منطقة عرض التقرير
+    const contentArea = document.createElement('div');
+    contentArea.className = 'report-content';
+    contentArea.innerHTML = reportHtml;
+    
+    modalContent.appendChild(modalHeader);
+    modalContent.appendChild(contentArea);
+    modal.appendChild(modalContent);
+    document.body.appendChild(modal);
+    
+    // إضافة الأحداث
+    document.getElementById('closePreviewBtn').onclick = () => modal.remove();
+    document.getElementById('printReportBtn').onclick = () => {
+        const printWindow = window.open('', '_blank', 'width=1100,height=800');
+        printWindow.document.write(reportHtml);
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => printWindow.print(), 500);
+    };
+    document.getElementById('downloadReportPdfBtn').onclick = async () => {
+        // إخفاء الزر مؤقتاً للتصدير
+        const tempDiv = document.createElement('div');
+        tempDiv.style.position = 'absolute';
+        tempDiv.style.left = '-9999px';
+        tempDiv.style.top = '-9999px';
+        tempDiv.style.width = '1200px';
+        tempDiv.style.background = 'white';
+        tempDiv.style.padding = '20px';
+        tempDiv.style.direction = 'rtl';
+        tempDiv.innerHTML = reportHtml;
+        document.body.appendChild(tempDiv);
+        
+        if (typeof window.jspdf !== 'undefined' && typeof window.html2canvas !== 'undefined') {
+            try {
+                await new Promise(resolve => setTimeout(resolve, 200));
+                const canvas = await html2canvas(tempDiv, {
+                    scale: 1.5,
+                    backgroundColor: '#ffffff',
+                    logging: false,
+                    useCORS: true,
+                    windowWidth: tempDiv.scrollWidth,
+                    windowHeight: tempDiv.scrollHeight
+                });
+                const imgData = canvas.toDataURL('image/jpeg', 0.85);
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF({
+                    orientation: 'landscape',
+                    unit: 'mm',
+                    format: 'a4',
+                    compress: true
+                });
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+                pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+                pdf.save(`تقرير_فواتير_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.pdf`);
+                showNotification('تم تصدير التقرير بنجاح', 'success');
+            } catch (err) {
+                console.error(err);
+                showNotification('حدث خطأ في تصدير PDF', 'error');
+            }
+        } else {
+            showNotification('مكتبات PDF غير جاهزة', 'error');
+        }
+        document.body.removeChild(tempDiv);
+    };
+    
+    // إغلاق النافذة عند النقر خارج المحتوى
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+    });
+}
+
+// ============================================
+// تصدير تقرير مفصل للفواتير المحددة
+// ============================================
+async function exportSelectedReport() {
+    if (selectedInvoices.size === 0) {
+        showNotification('لم يتم تحديد أي فواتير', 'warning');
+        return;
+    }
+
+    // الحصول على الفواتير المحددة
+    const selectedInvoicesData = [];
+    for (let idx of selectedInvoices) {
+        if (idx >= 0 && idx < invoicesData.length) {
+            selectedInvoicesData.push(invoicesData[idx]);
+        }
+    }
+
+    if (selectedInvoicesData.length === 0) {
+        showNotification('لا توجد بيانات للفواتير المحددة', 'error');
+        return;
+    }
+
+    // ترتيب الفواتير حسب الرقم التسلسلي الفعلي (بعد البادئة)
+    selectedInvoicesData.sort((a, b) => {
+        const numA = getInvoiceSerialNumber(a['final-number']);
+        const numB = getInvoiceSerialNumber(b['final-number']);
+        return numA - numB;
+    });
+
+    // الحصول على فترة البحث من حقول التاريخ (إذا كانت موجودة)
+    const dateFromElem = document.getElementById('searchDateFrom');
+    const dateToElem = document.getElementById('searchDateTo');
+    let fromDate = dateFromElem?.value || '';
+    let toDate = dateToElem?.value || '';
+    if (fromDate && toDate) {
+        fromDate = fromDate.replace(/-/g, '/');
+        toDate = toDate.replace(/-/g, '/');
+    }
+
+    // استخراج الخطوط الملاحية الفريدة (contract-customer-id)
+    const lineOperators = [...new Set(selectedInvoicesData.map(inv => inv['contract-customer-id']).filter(op => op))];
+    const lineOperatorsText = lineOperators.length ? lineOperators.join(', ') : 'الكل';
+
+    // حساب الإجماليات
+    let totals = {
+        usadCharges: 0, usadTaxes: 0, usadTotal: 0,
+        egpCharges: 0, egpTaxes: 0, egpTotal: 0,
+        grandTotal: 0
+    };
+
+    selectedInvoicesData.forEach(inv => {
+        const currency = inv['currency'] || 'EGP';
+        const exchangeRate = inv['flex-string-06'] || 48.0215;
+        const martyr = (inv['final-number'] || '').startsWith('P') ? 0 : 5;
+        const total = (inv['total-total'] || 0) + martyr;
+
+        if (currency === 'USAD') {
+            totals.usadCharges += (inv['total-charges'] || 0) / exchangeRate;
+            totals.usadTaxes += (inv['total-taxes'] || 0) / exchangeRate;
+            totals.usadTotal += total / exchangeRate;
+        } else {
+            totals.egpCharges += (inv['total-charges'] || 0);
+            totals.egpTaxes += (inv['total-taxes'] || 0);
+            totals.egpTotal += total;
+        }
+        totals.grandTotal += total; // مجموع غير موحد العملات (للعرض فقط)
+    });
+
+    // بناء HTML التقرير
+    const reportHtml = generateReportHTML(selectedInvoicesData, {
+        fromDate, toDate,
+        lineOperatorsText,
+        totals,
+        count: selectedInvoicesData.length
+    });
+
+    // إنشاء PDF
+    const tempDiv = document.createElement('div');
+    tempDiv.style.position = 'absolute';
+    tempDiv.style.left = '-9999px';
+    tempDiv.style.top = '-9999px';
+    tempDiv.style.width = '1200px';
+    tempDiv.style.background = 'white';
+    tempDiv.style.padding = '20px';
+    tempDiv.style.direction = 'rtl';
+    tempDiv.innerHTML = reportHtml;
+    document.body.appendChild(tempDiv);
+
+    if (typeof window.jspdf === 'undefined' || typeof window.html2canvas === 'undefined') {
+        showNotification('جاري تحميل مكتبات PDF...', 'info');
+        document.body.removeChild(tempDiv);
+        return;
+    }
+
+    showProgress('جاري إنشاء التقرير...', 30);
+    try {
+        await new Promise(resolve => setTimeout(resolve, 200));
+        const canvas = await html2canvas(tempDiv, {
+            scale: 1.5,
+            backgroundColor: '#ffffff',
+            logging: false,
+            useCORS: true,
+            windowWidth: tempDiv.scrollWidth,
+            windowHeight: tempDiv.scrollHeight
+        });
+        const imgData = canvas.toDataURL('image/jpeg', 0.85);
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({
+            orientation: 'landscape',
+            unit: 'mm',
+            format: 'a4',
+            compress: true
+        });
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+        pdf.save(`تقرير_فواتير_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.pdf`);
+        showNotification('تم تصدير التقرير بنجاح', 'success');
+    } catch (error) {
+        console.error('خطأ في إنشاء PDF:', error);
+        showNotification('حدث خطأ في إنشاء التقرير', 'error');
+    } finally {
+        document.body.removeChild(tempDiv);
+        setTimeout(hideProgress, 1500);
+    }
+}
 // ============================================
 // دوال تحميل الشعار من Drive
 // ============================================
@@ -3405,6 +3940,13 @@ function renderTableView(data) {
                     <button class="btn btn-info" onclick="exportSelectedContainers()" id="exportContainersBtn" disabled style="background: #4cc9f0; color: white;">
                         <i class="fas fa-container-storage"></i> تصدير الحاويات
                     </button>
+					<!-- ✅ أضف الزر الجديد هنا -->
+					<button class="btn btn-secondary" onclick="exportSelectedReport()">
+						<i class="fas fa-file-pdf"></i> تقرير مفصل
+					</button>
+					<button class="btn btn-secondary" onclick="exportSelectedReport()">
+						<i class="fas fa-eye"></i> معاينة التقرير
+					</button>
                 </div>
             </div>
             <table class="data-table">
