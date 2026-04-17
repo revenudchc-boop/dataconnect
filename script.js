@@ -219,6 +219,37 @@ async function saveViewedToDrive() {
 // متغير لتخزين الشعار
 let companyLogoBase64 = null;
 
+// متغير لتخزين الشعار
+let companyLogoBase64 = null;
+
+// ============================================
+// ✅ أضف الدالة هنا 👇
+// ============================================
+// دالة موحدة لإنشاء مفتاح الفاتورة
+function getInvoiceKey(invoice) {
+    // استخدام الرقم النهائي إذا وجد، وإلا استخدام الرقم المبدئي
+    const finalNumber = invoice['final-number'] || '';
+    const draftNumber = invoice['draft-number'] || '';
+    
+    // تنسيق المفتاح: الرقم النهائي|الرقم المبدئي
+    // مثال: "C25-25656|269044"
+    return `${finalNumber}|${draftNumber}`;
+}
+
+// دالة مساعدة لإنشاء مفتاح من رقمين (للاستخدام المباشر)
+function createInvoiceKey(finalNumber, draftNumber) {
+    return `${finalNumber}|${draftNumber}`;
+}
+// ============================================
+// 👆 نهاية إضافة الدالة
+// ============================================
+
+// ============================================
+// دوال تنسيق الأرقام
+// ============================================
+function formatNumberWithCommas(number) {
+    // ... الكود الموجود
+}
 
 // إعدادات Drive المباشرة
 // ============================================
@@ -1424,44 +1455,54 @@ window.applyAdvancedSearch = function() {
         }
     }
 
-    const searched = tempInvoices.filter(inv => {
-        if (final && !(inv['final-number'] || '').toLowerCase().includes(final)) return false;
-        if (draft && !(inv['draft-number'] || '').toLowerCase().includes(draft)) return false;
-        if (cust) {
-            const payeeMatch = (inv['payee-customer-id'] || '').toLowerCase().includes(cust);
-            const contractMatch = (inv['contract-customer-id'] || '').toLowerCase().includes(cust);
-            if (!payeeMatch && !contractMatch) return false;
+const searched = tempInvoices.filter(inv => {
+    if (final && !(inv['final-number'] || '').toLowerCase().includes(final)) return false;
+    if (draft && !(inv['draft-number'] || '').toLowerCase().includes(draft)) return false;
+    if (cust) {
+        const payeeMatch = (inv['payee-customer-id'] || '').toLowerCase().includes(cust);
+        const contractMatch = (inv['contract-customer-id'] || '').toLowerCase().includes(cust);
+        if (!payeeMatch && !contractMatch) return false;
+    }
+    if (vessel && !(inv['key-word1'] || '').toLowerCase().includes(vessel)) return false;
+    if (bl && !(inv['key-word2'] || '').toLowerCase().includes(bl)) return false;
+    if (cont) {
+        const found = inv.charges.some(c => (c['entity-id'] || '').toLowerCase().includes(cont));
+        if (!found) return false;
+    }
+    if (contractCustomerId && !(inv['contract-customer-id'] || '').toLowerCase().includes(contractCustomerId)) return false;
+    if (status && inv['status'] !== status) return false;
+    if (invType) {
+        const num = inv['final-number'] || '';
+        if (invType === 'cash' && !(num.startsWith('C') || num.startsWith('c'))) return false;
+        if (invType === 'postponed' && !(num.startsWith('P') || num.startsWith('p'))) return false;
+    }
+    if (from || to) {
+        const invDateStr = inv['finalized-date'] || inv['created'] || '';
+        const invDate = new Date(invDateStr);
+        if (isNaN(invDate)) return true;
+        if (from) {
+            const fromDate = new Date(from);
+            fromDate.setHours(0, 0, 0, 0);
+            if (invDate < fromDate) return false;
         }
-        if (vessel && !(inv['key-word1'] || '').toLowerCase().includes(vessel)) return false;
-        if (bl && !(inv['key-word2'] || '').toLowerCase().includes(bl)) return false;
-        if (cont) {
-            const found = inv.charges.some(c => (c['entity-id'] || '').toLowerCase().includes(cont));
-            if (!found) return false;
+        if (to) {
+            const toDate = new Date(to);
+            toDate.setHours(23, 59, 59, 999);
+            if (invDate > toDate) return false;
         }
-        if (contractCustomerId && !(inv['contract-customer-id'] || '').toLowerCase().includes(contractCustomerId)) return false;
-        if (status && inv['status'] !== status) return false;
-        if (invType) {
-            const num = inv['final-number'] || '';
-            if (invType === 'cash' && !(num.startsWith('C') || num.startsWith('c'))) return false;
-            if (invType === 'postponed' && !(num.startsWith('P') || num.startsWith('p'))) return false;
-        }
-        if (from || to) {
-            const invDateStr = inv['finalized-date'] || inv['created'] || '';
-            const invDate = new Date(invDateStr);
-            if (isNaN(invDate)) return true;
-            if (from) {
-                const fromDate = new Date(from);
-                fromDate.setHours(0, 0, 0, 0);
-                if (invDate < fromDate) return false;
-            }
-            if (to) {
-                const toDate = new Date(to);
-                toDate.setHours(23, 59, 59, 999);
-                if (invDate > toDate) return false;
-            }
-        }
-        return true;
-    });
+    }
+    
+    // ✅ شرط حالة المعاينة
+    if (viewedStatus) {
+        const viewKey = getInvoiceKey(inv);
+        const isViewed = viewedInvoices.has(viewKey);
+        
+        if (viewedStatus === 'viewed' && !isViewed) return false;
+        if (viewedStatus === 'not_viewed' && isViewed) return false;
+    }
+    
+    return true;
+});
 
     filteredInvoices = searched;
     currentPage = 1;
@@ -3385,7 +3426,7 @@ function renderTableView(data) {
         const selectedClass = isSelected ? 'selected-row' : '';
         
         // مفتاح فريد للفاتورة (لحالة المعاينة)
-        const viewKey = `${finalNum}|${draftNum}`;
+		const viewKey = getInvoiceKey(inv);
         const isViewed = viewedInvoices.has(viewKey) ? 'checked' : '';
         
         html += `<tr onclick="window.handleRowClick(${idx}, event)" class="${selectedClass}" data-index="${idx}" data-key="${viewKey}">
