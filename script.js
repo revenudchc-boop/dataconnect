@@ -3411,30 +3411,31 @@ function renderTableView(data) {
                 <thead>
                     <tr>
                         <th style="width:40px;"><input type="checkbox" onclick="toggleAllCheckboxes(this)" id="selectAllCheckbox"></th>
+                        <th style="width:50px;">معاينة</th>
                         <th>الرقم النهائي</th>
                         <th>رقم المسودة</th>
                         <th>العميل</th>
                         <th>السفينة</th>
-                        <th>رقم البوليصة</th>
+                        <th>${currentInvoiceType === INVOICE_TYPES.POSTPONED ? 'IB ID / OB ID' : 'رقم البوليصة'}</th>
                         <th>تاريخ الرحله</th>
                         <th>الإجمالي (EGP)</th>
                         <th>المبلغ بالعملة</th>
-                        <th style="width:50px;">معاينة</th>
                     </tr>
                 </thead>
                 <tbody>`;
     
-    for (const inv of data) {
+    data.forEach(inv => {
         const idx = invoicesData.indexOf(inv);
-        if (idx === -1) continue;
-        
+        if (idx === -1) {
+            console.warn('فاتورة غير موجودة في invoicesData:', inv);
+            return;
+        }
         const finalNum = inv['final-number'] || '';
         const draftNum = inv['draft-number'] || '';
-        const invoiceTypeDisplay = finalNum.startsWith('P') ? 'أجل' : 'نقدي';
+        const invoiceTypeDisplay = finalNum.startsWith('P') || finalNum.startsWith('p') ? 'أجل' : 'نقدي';
         const currency = inv['currency'] || 'EGP';
         const exRate = inv['flex-string-06'] || 48.0215;
         const totalOriginal = inv['total-total'] || 0;
-        
         let displayAmount, displayCurrency;
         if (currency === 'USAD') {
             displayAmount = (totalOriginal / exRate).toFixed(2);
@@ -3443,27 +3444,29 @@ function renderTableView(data) {
             displayAmount = totalOriginal.toFixed(2);
             displayCurrency = 'EGP';
         }
-        
         const isSelected = selectedInvoices.has(idx) ? 'checked' : '';
         const selectedClass = isSelected ? 'selected-row' : '';
-        const viewKey = finalNum + '|' + draftNum;
+        
+        // مفتاح فريد للفاتورة (لحالة المعاينة)
+		const viewKey = getInvoiceKey(inv);
         const isViewed = viewedInvoices.has(viewKey) ? 'checked' : '';
         
-        html += '<tr onclick="window.handleRowClick(' + idx + ', event)" class="' + selectedClass + '" data-index="' + idx + '" data-key="' + viewKey + '">';
-        html += '<td onclick="event.stopPropagation()"><input type="checkbox" class="invoice-checkbox" data-index="' + idx + '" ' + isSelected + ' onchange="updateSelectedInvoices(' + idx + ', this.checked)"></td>';
-        html += '<td>' + (inv['final-number'] || '-') + ' (' + invoiceTypeDisplay + ')</td>';
-        html += '<td>' + (inv['draft-number'] || '-') + '</td>';
-        html += '<td>' + (inv['payee-customer-id'] || '-').substring(0, 20) + '</td>';
-        html += '<td>' + (inv['key-word1'] || '-') + '</td>';
-        html += '<td>' + (inv['key-word2'] || '-') + '</td>';
-        html += '<td>' + (inv['flex-date-02'] ? new Date(inv['flex-date-02']).toLocaleDateString('ar-EG') : '-') + '</td>';
-        html += '<td>' + formatNumberWithCommas(totalOriginal.toFixed(2)) + '</td>';
-        html += '<td>' + formatNumberWithCommas(displayAmount) + ' ' + displayCurrency + '</td>';
-        html += '<td class="viewed-cell" onclick="event.stopPropagation()">';
-        html += '<input type="checkbox" class="viewed-checkbox" data-key="' + viewKey + '" ' + isViewed + ' onchange="toggleInvoiceViewed(\'' + viewKey + '\', this.checked, \'' + finalNum + '\', \'' + draftNum + '\')">';
-        html += '</td>';
-        html += '</tr>';
-    }
+        html += `<tr onclick="window.handleRowClick(${idx}, event)" class="${selectedClass}" data-index="${idx}" data-key="${viewKey}">
+            <td onclick="event.stopPropagation()"><input type="checkbox" class="invoice-checkbox" data-index="${idx}" ${isSelected} onchange="updateSelectedInvoices(${idx}, this.checked)"></td>
+            <td class="viewed-cell" onclick="event.stopPropagation()">
+                <input type="checkbox" class="viewed-checkbox" data-key="${viewKey}" ${isViewed} 
+                       onchange="toggleInvoiceViewed('${viewKey}', this.checked, '${finalNum}', '${draftNum}')">
+            </td>
+            <td>${inv['final-number'] || '-'} (${invoiceTypeDisplay})</td>
+            <td>${inv['draft-number'] || '-'}</td>
+            <td>${(inv['payee-customer-id'] || '-').substring(0,20)}</td>
+            <td>${inv['key-word1'] || '-'}</td>
+            <td>${inv['key-word2'] || '-'}</td>
+            <td>${inv['flex-date-02'] ? new Date(inv['flex-date-02']).toLocaleDateString('ar-EG') : '-'}</td>
+            <td>${formatNumberWithCommas(totalOriginal.toFixed(2))}</td>
+            <td>${formatNumberWithCommas(displayAmount)} ${displayCurrency}</td>
+        </tr>`;
+    });
     
     html += '</tbody></table></div>';
     document.getElementById('dataViewContainer').innerHTML = html;
