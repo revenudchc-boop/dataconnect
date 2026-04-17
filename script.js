@@ -1458,15 +1458,19 @@ window.applyAdvancedSearch = function() {
             }
         }
         
-		// ✅ شرط حالة المعاينة (بناءً على المستخدم الحالي فقط)
+		// ✅ شرط حالة المعاينة (للمستخدم الحالي فقط)
 		if (viewedStatus) {
-			// الحصول على مفتاح الفاتورة
 			const viewKey = getInvoiceKey(inv);
-			
-			// التحقق مما إذا كانت الفاتورة محددة من قبل المستخدم الحالي
-			// viewedInvoices تحتوي فقط على بيانات المستخدم الحالي (بعد تحميل loadViewedFromDrive)
 			const isViewed = viewedInvoices.has(viewKey);
 			
+			// أولاً: تأكد من أن الفاتورة تخص المستخدم الحالي (بناءً على صلاحياته)
+			const userKey = currentUser?.username || 'guest';
+			const belongsToUser = checkIfInvoiceBelongsToUser(inv, userKey);
+			
+			// إذا كانت الفاتورة لا تخص المستخدم، تجاهلها تماماً
+			if (!belongsToUser) return false;
+			
+			// ثم طبق تصفية حالة المعاينة
 			if (viewedStatus === 'viewed' && !isViewed) return false;
 			if (viewedStatus === 'not_viewed' && isViewed) return false;
 		}
@@ -6056,3 +6060,34 @@ function debounce(func, wait) {
         }
     }, 500);
 })();
+
+
+// دالة للتحقق مما إذا كانت الفاتورة تخص المستخدم الحالي
+function checkIfInvoiceBelongsToUser(invoice, username) {
+    // إذا كان المستخدم مديراً، يعرض كل الفواتير
+    if (currentUser?.userType === 'admin') return true;
+    
+    // إذا كان المستخدم ضيفاً
+    if (currentUser?.isGuest) {
+        const taxNumber = currentUser.taxNumber;
+        if (!taxNumber) return false;
+        const payeeMatch = (invoice['payee-customer-id'] || '').toLowerCase().includes(taxNumber.toLowerCase());
+        const contractMatch = (invoice['contract-customer-id'] || '').toLowerCase().includes(taxNumber.toLowerCase());
+        return payeeMatch || contractMatch;
+    }
+    
+    // للمستخدم العادي (محاسب أو عميل)
+    let allowedIds = [];
+    if (currentUser.contractCustomerId) allowedIds.push(currentUser.contractCustomerId);
+    if (currentUser.customerIds && Array.isArray(currentUser.customerIds)) {
+        allowedIds = allowedIds.concat(currentUser.customerIds);
+    }
+    allowedIds = [...new Set(allowedIds.map(id => id.toLowerCase()))];
+    
+    if (allowedIds.length === 0) return false;
+    
+    const payeeId = (invoice['payee-customer-id'] || '').toLowerCase();
+    const contractId = (invoice['contract-customer-id'] || '').toLowerCase();
+    
+    return allowedIds.some(id => payeeId === id || contractId === id);
+}
