@@ -397,32 +397,136 @@ function getInvoiceSerialNumber(finalNumber) {
 
 
 // دالة لتقسيم التقرير الطويل إلى صفحات متعددة مع تكرار الرأس
-function splitReportIntoPages(reportHtml, rowsPerPage = 20) {
-    // إنشاء عنصر مؤقت لتحليل HTML
+function splitReportIntoPages(reportHtml, rowsPerPage = 15) {
+    // استخراج الـ footer (رسالة الشكر) من HTML الأصلي
+    const footerMatch = reportHtml.match(/<div class="report-footer">[\s\S]*?<\/div>/);
+    let footerHtml = '';
+    let htmlWithoutFooter = reportHtml;
+    if (footerMatch) {
+        footerHtml = footerMatch[0];
+        htmlWithoutFooter = reportHtml.replace(footerMatch[0], '');
+    }
+    
     const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = reportHtml;
-    const table = tempDiv.querySelector('.report-table tbody');
-    if (!table) return [reportHtml];
+    tempDiv.innerHTML = htmlWithoutFooter;
+    const table = tempDiv.querySelector('.report-table');
+    if (!table) return [{ html: reportHtml, pageTotal: null, pageNumber: 1, isLast: true }];
     
-    const allRows = table.querySelectorAll('tr');
-    if (allRows.length <= rowsPerPage) return [reportHtml];
+    const tbody = table.querySelector('tbody');
+    const allRows = Array.from(tbody.querySelectorAll('tr'));
     
-    const pagesHtml = [];
-    const theadHtml = tempDiv.querySelector('.report-table thead').outerHTML;
-    const beforeTableHtml = reportHtml.split('<tbody>')[0] + '<tbody>';
-    const afterTableHtml = '</tbody>' + reportHtml.split('</tbody>')[1];
+    // دالة لحساب إجمالي مجموعة من الصفوف
+    function calculateRowsTotal(rows) {
+        let usadCharges = 0, usadTaxes = 0, egpCharges = 0, egpTaxes = 0;
+        rows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            if (cells.length >= 10) {
+                usadCharges += parseFloat(cells[6]?.innerText.replace(/,/g, '')) || 0;
+                usadTaxes   += parseFloat(cells[7]?.innerText.replace(/,/g, '')) || 0;
+                egpCharges  += parseFloat(cells[8]?.innerText.replace(/,/g, '')) || 0;
+                egpTaxes    += parseFloat(cells[9]?.innerText.replace(/,/g, '')) || 0;
+            }
+        });
+        return { usadCharges, usadTaxes, egpCharges, egpTaxes };
+    }
     
-    // تقسيم الصفوف إلى صفحات
+    const theadHtml = table.querySelector('thead').outerHTML;
+    const beforeTableHtml = htmlWithoutFooter.split('<tbody>')[0] + '<tbody>';
+    const afterTableHtml = '</tbody>' + htmlWithoutFooter.split('</tbody>')[1];
+    
+    // إذا كان عدد الصفوف أقل من أو يساوي الحد الأقصى (صفحة واحدة)
+    if (allRows.length <= rowsPerPage) {
+        // حساب الإجماليات للصفحة الواحدة
+        const pageTotal = calculateRowsTotal(allRows);
+        const pageBody = allRows.map(row => row.outerHTML).join('');
+        
+        // إضافة صف إجمالي الصفحة
+        const totalRow = `<tr class="page-total-row" style="background-color: #e8f4f8; font-weight: bold;">
+            <td colspan="6" style="text-align: left;">إجمالي الصفحة</td>
+            <td>${pageTotal.usadCharges.toFixed(2)}</td>
+            <td>${pageTotal.usadTaxes.toFixed(2)}</td>
+            <td>${pageTotal.egpCharges.toFixed(2)}</td>
+            <td>${pageTotal.egpTaxes.toFixed(2)}</td>
+            <td>-</td>
+        </tr>`;
+        const pageBodyWithTotal = pageBody + totalRow;
+        
+        // إضافة صف الإجمالي الكلي (لأنها الصفحة الوحيدة والأخيرة)
+        const grandTotalRow = `<tr class="grand-total-row" style="background-color: #d1ecf1; font-weight: bold;">
+            <td colspan="6" style="text-align: left;">الإجمالي الكلي</td>
+            <td>${pageTotal.usadCharges.toFixed(2)}</td>
+            <td>${pageTotal.usadTaxes.toFixed(2)}</td>
+            <td>${pageTotal.egpCharges.toFixed(2)}</td>
+            <td>${pageTotal.egpTaxes.toFixed(2)}</td>
+            <td>-</td>
+        </tr>`;
+        const finalBody = pageBodyWithTotal + grandTotalRow;
+        
+        let pageFullHtml = beforeTableHtml + finalBody + afterTableHtml;
+        
+        // إضافة رقم الصفحة (صفحة 1 من 1)
+        const footerNote = `<div style="text-align: left; direction: ltr; font-size: 0.7em; margin-top: 15px; color: #666;">صفحة 1 من 1</div>`;
+        pageFullHtml += footerNote;
+        
+        // إضافة رسالة الشكر (الـ footer) إذا وجدت
+        if (footerHtml) pageFullHtml += footerHtml;
+        
+        return [{ html: pageFullHtml, pageTotal: pageTotal, pageNumber: 1, isLast: true }];
+    }
+    
+    // ------------------------------------------------------------------
+    // الحالة العادية: عدة صفحات (كما في الكود الأصلي)
+    // ------------------------------------------------------------------
+    const pages = [];
+    let grandTotalUsadCharges = 0, grandTotalUsadTaxes = 0, grandTotalEgpCharges = 0, grandTotalEgpTaxes = 0;
+    
     for (let i = 0; i < allRows.length; i += rowsPerPage) {
-        const pageRows = Array.from(allRows).slice(i, i + rowsPerPage);
+        const pageRows = allRows.slice(i, i + rowsPerPage);
         let pageBody = '';
         pageRows.forEach(row => pageBody += row.outerHTML);
         
-        const pageFullHtml = beforeTableHtml + pageBody + afterTableHtml;
-        pagesHtml.push(pageFullHtml);
+        const pageTotal = calculateRowsTotal(pageRows);
+        grandTotalUsadCharges += pageTotal.usadCharges;
+        grandTotalUsadTaxes   += pageTotal.usadTaxes;
+        grandTotalEgpCharges  += pageTotal.egpCharges;
+        grandTotalEgpTaxes    += pageTotal.egpTaxes;
+        
+        // صف إجمالي الصفحة
+        const totalRow = `<tr class="page-total-row" style="background-color: #e8f4f8; font-weight: bold;">
+            <td colspan="6" style="text-align: left;">إجمالي الصفحة</td>
+            <td>${pageTotal.usadCharges.toFixed(2)}</td>
+            <td>${pageTotal.usadTaxes.toFixed(2)}</td>
+            <td>${pageTotal.egpCharges.toFixed(2)}</td>
+            <td>${pageTotal.egpTaxes.toFixed(2)}</td>
+            <td>-</td>
+        </tr>`;
+        pageBody += totalRow;
+        
+        const pageNumber = Math.floor(i / rowsPerPage) + 1;
+        const totalPages = Math.ceil(allRows.length / rowsPerPage);
+        const isLast = (pageNumber === totalPages);
+        
+        // إضافة صف الإجمالي الكلي فقط للصفحة الأخيرة
+        if (isLast) {
+            const grandTotalRow = `<tr class="grand-total-row" style="background-color: #d1ecf1; font-weight: bold;">
+                <td colspan="6" style="text-align: left;">الإجمالي الكلي</td>
+                <td>${grandTotalUsadCharges.toFixed(2)}</td>
+                <td>${grandTotalUsadTaxes.toFixed(2)}</td>
+                <td>${grandTotalEgpCharges.toFixed(2)}</td>
+                <td>${grandTotalEgpTaxes.toFixed(2)}</td>
+                <td>-</td>
+            </tr>`;
+            pageBody += grandTotalRow;
+        }
+        
+        let pageFullHtml = beforeTableHtml + pageBody + afterTableHtml;
+        const footerNote = `<div style="text-align: left; direction: ltr; font-size: 0.7em; margin-top: 15px; color: #666;">صفحة ${pageNumber} من ${totalPages}</div>`;
+        pageFullHtml += footerNote;
+        if (isLast && footerHtml) pageFullHtml += footerHtml;
+        
+        pages.push({ html: pageFullHtml, pageTotal: pageTotal, pageNumber, isLast });
     }
-    
-    return pagesHtml;
+    return pages;
 }
 
 // دالة إنشاء HTML للتقرير المفصل
@@ -479,7 +583,8 @@ function generateReportHTML(invoices, reportInfo, logoBase64) {
         <title>تقرير الفواتير المحددة</title>
         <style>
             body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; padding: 20px; direction: rtl; background: white; }
-            .report-header { background: linear-gradient(135deg, #1e3c72, #2a5298); color: white; padding: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+            .report-header { background: linear-gradient(135deg, #1e3c72, #2a5298) !important; color: white !important; padding: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+            .report-header * { color: white !important; }
             .logo-area { display: flex; align-items: center; gap: 15px; }
             .logo-placeholder { width: 70px; height: 70px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 3px solid #ffd700; overflow: hidden; }
             .company-title h1 { font-size: 1.3em; margin: 0; font-weight: bold; }
@@ -494,6 +599,7 @@ function generateReportHTML(invoices, reportInfo, logoBase64) {
             .summary-box { flex: 1; border-right: 4px solid #4361ee; background: #f8f9fa; padding: 12px; border-radius: 8px; }
             .summary-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dashed #ccc; }
             .summary-row.total { font-weight: bold; color: #1e3c72; border-bottom: none; }
+            .summary-row span:last-child { white-space: nowrap; direction: ltr; text-align: left; font-family: monospace; font-size: 0.85em; }
             .report-footer { text-align: center; margin-top: 20px; padding: 10px; background: #1e3c72; color: white; font-size: 0.7em; }
             @media print { body { padding: 0; } }
         </style>
@@ -501,17 +607,13 @@ function generateReportHTML(invoices, reportInfo, logoBase64) {
     <body>
         <div class="report-header">
             <div class="logo-area">
-                <div class="logo-placeholder">
-                    ${logoHtml}
-                </div>
+                <div class="logo-placeholder">${logoHtml}</div>
                 <div class="company-title">
                     <h1>شركة دمياط لتداول الحاويات و البضائع</h1>
                     <p>دمياط - المنطقة الحرة - ميناء دمياط | هاتف: 0572290103</p>
                 </div>
             </div>
-            <div class="tax-info">
-                <i class="fas fa-building"></i> الرقم الضريبي: 100/221/823
-            </div>
+            <div class="tax-info"><i class="fas fa-building"></i> الرقم الضريبي: 100/221/823</div>
         </div>
         <div class="report-info">
             <span><strong>تقرير الفواتير المحددة</strong></span>
@@ -523,13 +625,8 @@ function generateReportHTML(invoices, reportInfo, logoBase64) {
         <table class="report-table">
             <thead><tr><th>م</th><th>رقم الفاتورة</th><th>تاريخ الفاتورة</th><th>اسم السفينة</th><th>تاريخ الرحلة</th><th>العملة</th><th>المبلغ (USAD)</th><th>الضريبة (USAD)</th><th>المبلغ (EGP)</th><th>الضريبة (EGP)</th><th>الإجمالي النهائي</th></tr></thead>
             <tbody>${rows}</tbody>
-            <tfoot>
-                <tr class="total-row"><td colspan="6" style="text-align:left;">الإجمالي العام</td>
-                <td>${totals.usadCharges.toFixed(2)}</td><td>${totals.usadTaxes.toFixed(2)}</td>
-                <td>${totals.egpCharges.toFixed(2)}</td><td>${totals.egpTaxes.toFixed(2)}</td><td>-</td>
-                </tr>
-            </tfoot>
         </table>
+        
         <div class="summary-section">
             <div class="summary-box"><h4>📊 ملخص العملة USAD</h4>
                 <div class="summary-row"><span>إجمالي المبلغ (USAD):</span><span>${totals.usadCharges.toFixed(2)} دولار</span></div>
@@ -541,12 +638,8 @@ function generateReportHTML(invoices, reportInfo, logoBase64) {
                 <div class="summary-row"><span>إجمالي الضريبة (EGP):</span><span>${totals.egpTaxes.toFixed(2)} جنيه</span></div>
                 <div class="summary-row total"><span>الإجمالي الكلي (EGP):</span><span>${totals.egpTotal.toFixed(2)} جنيه</span></div>
             </div>
-            <div class="summary-box"><h4>📊 إجمالي عام</h4>
-                <div class="summary-row"><span>إجمالي جميع الفواتير:</span><span>${(totals.usadTotal + totals.egpTotal).toFixed(2)} (باختلاف العملة)</span></div>
-                <div class="summary-row"><span>عدد الفواتير:</span><span>${count}</span></div>
-                <div class="summary-row"><span>متوسط قيمة الفاتورة:</span><span>${(totals.grandTotal/count).toFixed(2)}</span></div>
-            </div>
         </div>
+        
         <div class="report-footer">
             <p>شكراً لتعاملكم مع شركة دمياط لتداول الحاويات و البضائع</p>
             <p>تم إنشاء هذا التقرير إلكترونياً - تاريخ الطباعة: ${currentDate}</p>
@@ -558,16 +651,12 @@ function generateReportHTML(invoices, reportInfo, logoBase64) {
 // ============================================
 // تصدير تقرير مفصل للفواتير المحددة
 // ============================================
-// ============================================
-// تصدير تقرير مفصل للفواتير المحددة (معاينة)
-// ============================================
 async function exportSelectedReport() {
     if (selectedInvoices.size === 0) {
         showNotification('لم يتم تحديد أي فواتير', 'warning');
         return;
     }
 
-    // الحصول على الفواتير المحددة
     const selectedInvoicesData = [];
     for (let idx of selectedInvoices) {
         if (idx >= 0 && idx < invoicesData.length) {
@@ -587,7 +676,6 @@ async function exportSelectedReport() {
         return numA - numB;
     });
 
-    // الحصول على فترة البحث
     const dateFromElem = document.getElementById('searchDateFrom');
     const dateToElem = document.getElementById('searchDateTo');
     let fromDate = dateFromElem?.value || '';
@@ -597,11 +685,9 @@ async function exportSelectedReport() {
         toDate = toDate.replace(/-/g, '/');
     }
 
-    // استخراج الخطوط الملاحية الفريدة
     const lineOperators = [...new Set(selectedInvoicesData.map(inv => inv['contract-customer-id']).filter(op => op))];
     const lineOperatorsText = lineOperators.length ? lineOperators.join(', ') : 'الكل';
 
-    // حساب الإجماليات
     let totals = {
         usadCharges: 0, usadTaxes: 0, usadTotal: 0,
         egpCharges: 0, egpTaxes: 0, egpTotal: 0,
@@ -626,23 +712,31 @@ async function exportSelectedReport() {
         totals.grandTotal += total;
     });
 
- // بناء HTML التقرير (مع تمرير الشعار)
-    const reportHtml = generateReportHTML(selectedInvoicesData, {
+    // التأكد من تحميل الشعار
+    if (!companyLogoBase64) {
+        await loadLogoFromDrive();
+    }
+
+    // إنشاء HTML الكامل (مع بطاقات الإجماليات)
+    const reportHtmlWithSummary = generateReportHTML(selectedInvoicesData, {
         fromDate, toDate,
         lineOperatorsText,
         totals,
         count: selectedInvoicesData.length
-    }, companyLogoBase64);   // ✅ تمرير الشعار
+    }, companyLogoBase64);
 
-    // ✅ عرض التقرير في نافذة معاينة
-    showReportPreview(reportHtml);
+    // إنشاء HTML بدون بطاقات الإجماليات (لـ PDF فقط)
+    let reportHtmlWithoutSummary = reportHtmlWithSummary;
+    reportHtmlWithoutSummary = reportHtmlWithoutSummary.replace(/<div class="summary-section">[\s\S]*?<\/div>\s*<\/div>\s*<div class="report-footer">/, '<div class="report-footer">');
+
+    // عرض المعاينة مع النسخة الكاملة (لشاشة المعاينة والطباعة)
+    showReportPreview(reportHtmlWithSummary, reportHtmlWithoutSummary);
 }
 
 // ============================================
 // عرض التقرير في نافذة معاينة (Modal)
 // ============================================
-function showReportPreview(reportHtml) {
-    // إنشاء عنصر modal ديناميكياً
+function showReportPreview(reportHtmlWithSummary, reportHtmlWithoutSummary) {
     const modal = document.createElement('div');
     modal.id = 'reportPreviewModal';
     modal.style.cssText = `
@@ -672,7 +766,6 @@ function showReportPreview(reportHtml) {
         box-shadow: 0 10px 30px rgba(0,0,0,0.3);
     `;
     
-    // شريط العنوان والأزرار
     const modalHeader = document.createElement('div');
     modalHeader.style.cssText = `
         display: flex;
@@ -692,7 +785,6 @@ function showReportPreview(reportHtml) {
         </div>
     `;
     
-    // إضافة أزرار CSS
     const style = document.createElement('style');
     style.textContent = `
         .btn-preview {
@@ -723,84 +815,113 @@ function showReportPreview(reportHtml) {
     `;
     modalContent.appendChild(style);
     
-    // منطقة عرض التقرير
     const contentArea = document.createElement('div');
     contentArea.className = 'report-content';
-    contentArea.innerHTML = reportHtml;
+    contentArea.innerHTML = reportHtmlWithSummary;  // ✅ المعاينة تعرض النسخة الكاملة
     
     modalContent.appendChild(modalHeader);
     modalContent.appendChild(contentArea);
     modal.appendChild(modalContent);
     document.body.appendChild(modal);
     
-    // إضافة الأحداث
+    // إغلاق النافذة
     document.getElementById('closePreviewBtn').onclick = () => modal.remove();
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+    });
+    
+    // طباعة (تستخدم النسخة الكاملة مع البطاقات)
     document.getElementById('printReportBtn').onclick = () => {
         const printWindow = window.open('', '_blank', 'width=1100,height=800');
-        printWindow.document.write(reportHtml);
+        printWindow.document.write(reportHtmlWithSummary);
         printWindow.document.close();
         printWindow.focus();
         setTimeout(() => printWindow.print(), 500);
     };
     
-    // زر تحميل PDF مع تقسيم الصفحات
+    // تصدير PDF (يستخدم النسخة بدون بطاقات)
     document.getElementById('downloadReportPdfBtn').onclick = async () => {
-        // تقسيم التقرير إلى صفحات (كل صفحة 15 صفاً)
-        const pagesHtml = splitReportIntoPages(reportHtml, 15);
+        // استخدام الدالة المساعدة لتصدير PDF (يمكنك استخدام نفس الكود السابق مع splitReportIntoPages)
+
+}
+    
+// ✅ تصدير PDF (الكود الكامل كما هو، بدون تكرار)
+    document.getElementById('downloadReportPdfBtn').onclick = async () => {
+        // التأكد من وجود المكتبات
+        if (typeof window.jspdf === 'undefined' || typeof window.html2canvas === 'undefined') {
+            showNotification('مكتبات PDF غير متوفرة، يرجى تحديث الصفحة', 'error');
+            return;
+        }
+    
+        // تقسيم التقرير إلى صفحات (مع إجمالي الصفحة والإجمالي العام وترقيم الصفحات)
+        const pages = splitReportIntoPages(reportHtmlWithoutSummary, 15); // ✅ استخدم reportHtmlWithoutSummary بدلاً من reportHtml
         
-        if (typeof window.jspdf !== 'undefined' && typeof window.html2canvas !== 'undefined') {
-            showProgress('جاري إنشاء PDF...', 10);
-            const { jsPDF } = window.jspdf;
-            const pdf = new jsPDF({
-                orientation: 'landscape',
-                unit: 'mm',
-                format: 'a4',
-                compress: true
+        if (pages.length === 0) {
+            showNotification('لا توجد بيانات للتقرير', 'error');
+            return;
+        }
+
+    
+    showProgress('جاري إنشاء التقرير...', 10);
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4',
+        compress: true
+    });
+    
+    const margin = 10; // هوامش علوية وسفلية (ملم)
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const contentWidth = pdfWidth - (margin * 2);
+    
+    try {
+        for (let idx = 0; idx < pages.length; idx++) {
+            const pageHtml = pages[idx].html;
+            
+            // إنشاء عنصر مؤقت للصفحة الحالية
+            const tempDiv = document.createElement('div');
+            tempDiv.style.position = 'absolute';
+            tempDiv.style.left = '-9999px';
+            tempDiv.style.top = '-9999px';
+            tempDiv.style.width = '1100px';
+            tempDiv.style.background = 'white';
+            tempDiv.style.padding = '20px';
+            tempDiv.style.direction = 'rtl';
+            tempDiv.innerHTML = pageHtml;
+            document.body.appendChild(tempDiv);
+            
+            await new Promise(resolve => setTimeout(resolve, 150));
+            
+            const canvas = await html2canvas(tempDiv, {
+                scale: 2.2,
+                backgroundColor: '#ffffff',
+                logging: false,
+                useCORS: true,
+                windowWidth: tempDiv.scrollWidth,
+                windowHeight: tempDiv.scrollHeight
             });
             
-            for (let pageIdx = 0; pageIdx < pagesHtml.length; pageIdx++) {
-                showProgress(`جاري معالجة الصفحة ${pageIdx + 1} من ${pagesHtml.length}...`, Math.round((pageIdx / pagesHtml.length) * 80));
-                
-                // إنشاء عنصر مؤقت للصفحة الحالية
-                const tempDiv = document.createElement('div');
-                tempDiv.style.position = 'absolute';
-                tempDiv.style.left = '-9999px';
-                tempDiv.style.top = '-9999px';
-                tempDiv.style.width = '1100px';
-                tempDiv.style.background = 'white';
-                tempDiv.style.padding = '20px';
-                tempDiv.style.direction = 'rtl';
-                tempDiv.innerHTML = pagesHtml[pageIdx];
-                document.body.appendChild(tempDiv);
-                
-                await new Promise(resolve => setTimeout(resolve, 100));
-                const canvas = await html2canvas(tempDiv, {
-                    scale: 1.5,
-                    backgroundColor: '#ffffff',
-                    logging: false,
-                    useCORS: true,
-                    windowWidth: tempDiv.scrollWidth,
-                    windowHeight: tempDiv.scrollHeight
-                });
-                
-                const imgData = canvas.toDataURL('image/jpeg', 0.85);
-                const pdfWidth = pdf.internal.pageSize.getWidth();
-                const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-                
-                if (pageIdx > 0) pdf.addPage();
-                pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
-                
-                document.body.removeChild(tempDiv);
-            }
+            const imgData = canvas.toDataURL('image/jpeg', 0.9);
+            const imgHeight = (canvas.height * contentWidth) / canvas.width;
             
-            showProgress('جاري حفظ الملف...', 100);
-            pdf.save(`تقرير_فواتير_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.pdf`);
-            showNotification(`تم تصدير التقرير (${pagesHtml.length} صفحة) بنجاح`, 'success');
-            hideProgress();
-        } else {
-            showNotification('مكتبات PDF غير جاهزة', 'error');
+            if (idx > 0) pdf.addPage();
+            pdf.addImage(imgData, 'JPEG', margin, margin, contentWidth, imgHeight);
+            
+            document.body.removeChild(tempDiv);
         }
-    };
+        
+        const fileName = `تقرير_فواتير_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.pdf`;
+        pdf.save(fileName);
+        showNotification(`تم تصدير التقرير (${pages.length} صفحات) بنجاح`, 'success');
+    } catch (err) {
+        console.error(err);
+        showNotification('حدث خطأ في تصدير PDF', 'error');
+    } finally {
+        hideProgress();
+    }
+};
+
     
     // إغلاق النافذة عند النقر خارج المحتوى
     modal.addEventListener('click', (e) => {
@@ -852,6 +973,7 @@ function showProgress(message, percentage) {
         container = document.createElement('div');
         container.id = 'progressBarContainer';
         container.className = 'progress-bar-container';
+        container.style.zIndex = '100001';  // ✅ إضافة هذا السطر
         
         bar = document.createElement('div');
         bar.id = 'progressBar';
@@ -862,6 +984,7 @@ function showProgress(message, percentage) {
         msg = document.createElement('div');
         msg.id = 'progressMessage';
         msg.className = 'progress-message';
+        msg.style.zIndex = '100001';  // ✅ إضافة هذا السطر
         document.body.appendChild(msg);
     }
 
@@ -3826,20 +3949,17 @@ function renderTableView(data) {
                     <button class="btn btn-secondary" onclick="deselectAllInvoices()"><i class="fas fa-times"></i> إلغاء الكل</button>
                 </div>
                 <div class="export-buttons">
-                    <span id="selectedCount" style="margin-left:15px; font-weight:bold;">0</span> فاتورة محددة
-                    <button class="btn btn-primary" onclick="exportSelectedInvoices()" id="exportSelectedBtn" disabled><i class="fas fa-file-pdf"></i> PDF</button>
-                    <button class="btn btn-success" onclick="exportSelectedInvoicesExcel()" id="exportSelectedExcelBtn" disabled><i class="fas fa-file-excel"></i> Excel</button>
-                    <button class="btn btn-info" onclick="exportSelectedContainers()" id="exportContainersBtn" disabled style="background: #4cc9f0; color: white;">
-                        <i class="fas fa-container-storage"></i> تصدير الحاويات
-                    </button>
-					<!-- ✅ أضف الزر الجديد هنا -->
-					<button class="btn btn-secondary" onclick="exportSelectedReport()">
-						<i class="fas fa-file-pdf"></i> تقرير مفصل
+					<span id="selectedCount" style="margin-left:15px; font-weight:bold;">0</span> فاتورة محددة
+					<button class="btn btn-primary" onclick="exportSelectedInvoices()" id="exportSelectedBtn" disabled><i class="fas fa-file-pdf"></i> PDF</button>
+					<button class="btn btn-success" onclick="exportSelectedInvoicesExcel()" id="exportSelectedExcelBtn" disabled><i class="fas fa-file-excel"></i> Excel</button>
+					<button class="btn btn-info" onclick="exportSelectedContainers()" id="exportContainersBtn" disabled style="background: #4cc9f0; color: white;">
+						<i class="fas fa-container-storage"></i> تصدير الحاويات
 					</button>
+					<!-- ✅ زر واحد فقط: مطالبة تحصيل -->
 					<button class="btn btn-secondary" onclick="exportSelectedReport()">
-						<i class="fas fa-eye"></i> معاينة التقرير
+						<i class="fas fa-file-invoice-dollar"></i> مطالبة تحصيل
 					</button>
-                </div>
+				</div>
             </div>
             <table class="data-table">
                 <thead>
@@ -6546,15 +6666,10 @@ function debounce(func, wait) {
 
 // دالة للتحقق مما إذا كانت الفاتورة تخص المستخدم الحالي
 function checkIfInvoiceBelongsToUser(invoice) {
-    console.log('🔍 checkIfInvoiceBelongsToUser - بدء التحقق');
-    console.log('نوع المستخدم:', currentUser?.userType);
-    console.log('رقم الفاتورة:', invoice['final-number']);
     if (!currentUser) return false;
     
-    // المدير يرى كل الفواتير
     if (currentUser.userType === 'admin') return true;
     
-    // الزائر
     if (currentUser.isGuest) {
         const taxNumber = currentUser.taxNumber;
         if (!taxNumber) return false;
@@ -6577,4 +6692,75 @@ function checkIfInvoiceBelongsToUser(invoice) {
     const contractId = (invoice['contract-customer-id'] || '').toLowerCase();
     
     return allowedIds.some(id => payeeId === id || contractId === id);
+}
+
+
+async function exportReportAsProfessionalPDF(reportHtml, reportTitle) {
+    const pages = splitReportIntoPages(reportHtml, 15);
+    if (pages.length === 0) {
+        showNotification('لا توجد بيانات للتقرير', 'error');
+        return;
+    }
+    if (typeof window.jspdf === 'undefined' || typeof window.html2canvas === 'undefined') {
+        showNotification('مكتبات PDF غير متوفرة', 'error');
+        return;
+    }
+    showProgress('جاري إنشاء التقرير...', 10);
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
+    const margin = 10;
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const contentWidth = pdfWidth - (margin * 2);
+    
+    try {
+        for (let idx = 0; idx < pages.length; idx++) {
+            const pageHtml = pages[idx].html;
+            const tempDiv = document.createElement('div');
+            tempDiv.style.position = 'absolute';
+            tempDiv.style.left = '-9999px';
+            tempDiv.style.top = '-9999px';
+            tempDiv.style.width = '1100px';
+            tempDiv.style.background = 'white';
+            tempDiv.style.padding = '20px';
+            tempDiv.style.direction = 'rtl';
+            tempDiv.innerHTML = pageHtml;
+            document.body.appendChild(tempDiv);
+            
+            await new Promise(resolve => setTimeout(resolve, 150));
+            const canvas = await html2canvas(tempDiv, {
+                scale: 2.2,
+                backgroundColor: '#ffffff',
+                logging: false,
+                useCORS: true,
+                windowWidth: tempDiv.scrollWidth,
+                windowHeight: tempDiv.scrollHeight
+            });
+            
+            const imgData = canvas.toDataURL('image/jpeg', 0.9);
+            const imgHeight = (canvas.height * contentWidth) / canvas.width;
+            if (idx > 0) pdf.addPage();
+            pdf.addImage(imgData, 'JPEG', margin, margin, contentWidth, imgHeight);
+            document.body.removeChild(tempDiv);
+        }
+        const fileName = `${reportTitle}_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.pdf`;
+        pdf.save(fileName);
+        showNotification(`تم تصدير التقرير (${pages.length} صفحات) بنجاح`, 'success');
+    } catch (err) {
+        console.error(err);
+        showNotification('حدث خطأ في تصدير PDF', 'error');
+    } finally {
+        hideProgress();
+    }
+}
+
+
+async function exportDirectPDF() {
+    if (selectedInvoices.size === 0) {
+        showNotification('لم يتم تحديد أي فواتير', 'warning');
+        return;
+    }
+    // جمع الفواتير المحددة وبناء HTML (نفس الكود الموجود في exportSelectedReport)
+    // ... (انسخ الكود من exportSelectedReport حتى إنشاء reportHtmlWithoutSummary)
+    // ثم:
+    await exportReportAsProfessionalPDF(reportHtmlWithoutSummary, 'تقرير_فواتير');
 }
