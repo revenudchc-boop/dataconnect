@@ -396,12 +396,12 @@ function getInvoiceSerialNumber(finalNumber) {
 }
 
 // دالة إنشاء HTML للتقرير المفصل
-function generateReportHTML(invoices, reportInfo) {
+function generateReportHTML(invoices, reportInfo, logoBase64) {
     const { fromDate, toDate, lineOperatorsText, totals, count } = reportInfo;
     const currentDate = new Date().toISOString().slice(0,10).replace(/-/g, '/');
     
-    // استخدام الشعار الحقيقي من Drive إذا كان موجوداً
-    const logoSrc = window.companyLogoBase64 || '';
+    // استخدام الشعار الحقيقي إذا وُجد
+    const logoSrc = logoBase64 || '';
     const logoHtml = logoSrc 
         ? `<img src="${logoSrc}" style="width:100%; height:100%; object-fit: cover; border-radius: 50%;">`
         : '<i class="fas fa-ship" style="font-size: 2.5em; color: #1e3c72;"></i>';
@@ -595,17 +595,13 @@ async function exportSelectedReport() {
         totals.grandTotal += total;
     });
 
-// التأكد من تحميل الشعار (إذا لم يتم تحميله بعد، انتظر قليلاً)
-if (!window.companyLogoBase64) {
-    await loadLogoFromDrive();
-}
-    // بناء HTML التقرير
+ // بناء HTML التقرير (مع تمرير الشعار)
     const reportHtml = generateReportHTML(selectedInvoicesData, {
         fromDate, toDate,
         lineOperatorsText,
         totals,
         count: selectedInvoicesData.length
-    });
+    }, companyLogoBase64);   // ✅ تمرير الشعار
 
     // ✅ عرض التقرير في نافذة معاينة
     showReportPreview(reportHtml);
