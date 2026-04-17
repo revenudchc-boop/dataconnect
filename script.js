@@ -1422,6 +1422,8 @@ window.applyAdvancedSearch = function() {
     // ... (تصفية المستخدم الضيف والمستخدم العادي) ...
 
     const searched = tempInvoices.filter(inv => {
+		 // ✅ تصفية حسب صلاحيات المستخدم (أضف هذا السطر)
+		if (!checkIfInvoiceBelongsToUser(inv)) return false;
         if (final && !(inv['final-number'] || '').toLowerCase().includes(final)) return false;
         if (draft && !(inv['draft-number'] || '').toLowerCase().includes(draft)) return false;
         if (cust) {
@@ -6063,12 +6065,14 @@ function debounce(func, wait) {
 
 
 // دالة للتحقق مما إذا كانت الفاتورة تخص المستخدم الحالي
-function checkIfInvoiceBelongsToUser(invoice, username) {
-    // إذا كان المستخدم مديراً، يعرض كل الفواتير
-    if (currentUser?.userType === 'admin') return true;
+function checkIfInvoiceBelongsToUser(invoice) {
+    if (!currentUser) return false;
     
-    // إذا كان المستخدم ضيفاً
-    if (currentUser?.isGuest) {
+    // المدير يرى كل الفواتير
+    if (currentUser.userType === 'admin') return true;
+    
+    // الزائر
+    if (currentUser.isGuest) {
         const taxNumber = currentUser.taxNumber;
         if (!taxNumber) return false;
         const payeeMatch = (invoice['payee-customer-id'] || '').toLowerCase().includes(taxNumber.toLowerCase());
@@ -6076,13 +6080,13 @@ function checkIfInvoiceBelongsToUser(invoice, username) {
         return payeeMatch || contractMatch;
     }
     
-    // للمستخدم العادي (محاسب أو عميل)
+    // المستخدم العادي (محاسب أو عميل)
     let allowedIds = [];
-    if (currentUser.contractCustomerId) allowedIds.push(currentUser.contractCustomerId);
+    if (currentUser.contractCustomerId) allowedIds.push(currentUser.contractCustomerId.toLowerCase());
     if (currentUser.customerIds && Array.isArray(currentUser.customerIds)) {
-        allowedIds = allowedIds.concat(currentUser.customerIds);
+        allowedIds = allowedIds.concat(currentUser.customerIds.map(id => id.toLowerCase()));
     }
-    allowedIds = [...new Set(allowedIds.map(id => id.toLowerCase()))];
+    allowedIds = [...new Set(allowedIds)];
     
     if (allowedIds.length === 0) return false;
     
