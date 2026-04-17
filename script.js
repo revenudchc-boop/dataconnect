@@ -400,6 +400,12 @@ function generateReportHTML(invoices, reportInfo) {
     const { fromDate, toDate, lineOperatorsText, totals, count } = reportInfo;
     const currentDate = new Date().toISOString().slice(0,10).replace(/-/g, '/');
     
+    // استخدام الشعار الحقيقي من Drive إذا كان موجوداً
+    const logoSrc = window.companyLogoBase64 || '';
+    const logoHtml = logoSrc 
+        ? `<img src="${logoSrc}" style="width:100%; height:100%; object-fit: cover; border-radius: 50%;">`
+        : '<i class="fas fa-ship" style="font-size: 2.5em; color: #1e3c72;"></i>';
+    
     let rows = '';
     invoices.forEach((inv, idx) => {
         const finalNum = inv['final-number'] || '';
@@ -446,8 +452,7 @@ function generateReportHTML(invoices, reportInfo) {
             body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; padding: 20px; direction: rtl; background: white; }
             .report-header { background: linear-gradient(135deg, #1e3c72, #2a5298); color: white; padding: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
             .logo-area { display: flex; align-items: center; gap: 15px; }
-            .logo-placeholder { width: 70px; height: 70px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 3px solid #ffd700; }
-            .logo-placeholder i { font-size: 2.5em; color: #1e3c72; }
+            .logo-placeholder { width: 70px; height: 70px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 3px solid #ffd700; overflow: hidden; }
             .company-title h1 { font-size: 1.3em; margin: 0; }
             .company-title p { margin: 5px 0 0; font-size: 0.7em; }
             .tax-info { font-size: 0.8em; background: rgba(255,255,255,0.2); padding: 8px 15px; border-radius: 8px; }
@@ -467,13 +472,17 @@ function generateReportHTML(invoices, reportInfo) {
     <body>
         <div class="report-header">
             <div class="logo-area">
-                <div class="logo-placeholder"><i class="fas fa-ship"></i></div>
+                <div class="logo-placeholder">
+                    ${logoHtml}
+                </div>
                 <div class="company-title">
                     <h1>شركة دمياط لتداول الحاويات و البضائع</h1>
                     <p>دمياط - المنطقة الحرة - ميناء دمياط | هاتف: 0572290103</p>
                 </div>
             </div>
-            <div class="tax-info"><i class="fas fa-building"></i> الرقم الضريبي: 100/221/823</div>
+            <div class="tax-info">
+                <i class="fas fa-building"></i> الرقم الضريبي: 100/221/823
+            </div>
         </div>
         <div class="report-info">
             <span><strong>تقرير الفواتير المحددة</strong></span>
@@ -586,6 +595,10 @@ async function exportSelectedReport() {
         totals.grandTotal += total;
     });
 
+// التأكد من تحميل الشعار (إذا لم يتم تحميله بعد، انتظر قليلاً)
+if (!window.companyLogoBase64) {
+    await loadLogoFromDrive();
+}
     // بناء HTML التقرير
     const reportHtml = generateReportHTML(selectedInvoicesData, {
         fromDate, toDate,
