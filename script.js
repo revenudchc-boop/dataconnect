@@ -6112,6 +6112,9 @@ function debounce(func, wait) {
 
 // دالة للتحقق مما إذا كانت الفاتورة تخص المستخدم الحالي
 function checkIfInvoiceBelongsToUser(invoice) {
+    console.log('🔍 checkIfInvoiceBelongsToUser - بدء التحقق');
+    console.log('نوع المستخدم:', currentUser?.userType);
+    console.log('رقم الفاتورة:', invoice['final-number']);
     if (!currentUser) return false;
     
     // المدير يرى كل الفواتير
