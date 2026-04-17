@@ -1458,14 +1458,18 @@ window.applyAdvancedSearch = function() {
             }
         }
         
-        // ✅ شرط حالة المعاينة
-        if (viewedStatus) {
-            const viewKey = getInvoiceKey(inv);
-            const isViewed = viewedInvoices.has(viewKey);
-            
-            if (viewedStatus === 'viewed' && !isViewed) return false;
-            if (viewedStatus === 'not_viewed' && isViewed) return false;
-        }
+		// ✅ شرط حالة المعاينة (بناءً على المستخدم الحالي فقط)
+		if (viewedStatus) {
+			// الحصول على مفتاح الفاتورة
+			const viewKey = getInvoiceKey(inv);
+			
+			// التحقق مما إذا كانت الفاتورة محددة من قبل المستخدم الحالي
+			// viewedInvoices تحتوي فقط على بيانات المستخدم الحالي (بعد تحميل loadViewedFromDrive)
+			const isViewed = viewedInvoices.has(viewKey);
+			
+			if (viewedStatus === 'viewed' && !isViewed) return false;
+			if (viewedStatus === 'not_viewed' && isViewed) return false;
+		}
         
         return true;
     });
