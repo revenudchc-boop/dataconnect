@@ -216,8 +216,6 @@ async function saveViewedToDrive() {
         return false;
     }
 }
-// متغير لتخزين الشعار
-let companyLogoBase64 = null;
 
 // متغير لتخزين الشعار
 let companyLogoBase64 = null;
