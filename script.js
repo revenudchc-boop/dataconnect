@@ -518,6 +518,9 @@ function generateReportHTML(invoices, reportInfo) {
 // ============================================
 // تصدير تقرير مفصل للفواتير المحددة
 // ============================================
+// ============================================
+// تصدير تقرير مفصل للفواتير المحددة (معاينة)
+// ============================================
 async function exportSelectedReport() {
     if (selectedInvoices.size === 0) {
         showNotification('لم يتم تحديد أي فواتير', 'warning');
@@ -537,14 +540,14 @@ async function exportSelectedReport() {
         return;
     }
 
-    // ترتيب الفواتير حسب الرقم التسلسلي الفعلي (بعد البادئة)
+    // ترتيب الفواتير حسب الرقم التسلسلي الفعلي
     selectedInvoicesData.sort((a, b) => {
         const numA = getInvoiceSerialNumber(a['final-number']);
         const numB = getInvoiceSerialNumber(b['final-number']);
         return numA - numB;
     });
 
-    // الحصول على فترة البحث من حقول التاريخ (إذا كانت موجودة)
+    // الحصول على فترة البحث
     const dateFromElem = document.getElementById('searchDateFrom');
     const dateToElem = document.getElementById('searchDateTo');
     let fromDate = dateFromElem?.value || '';
@@ -554,7 +557,7 @@ async function exportSelectedReport() {
         toDate = toDate.replace(/-/g, '/');
     }
 
-    // استخراج الخطوط الملاحية الفريدة (contract-customer-id)
+    // استخراج الخطوط الملاحية الفريدة
     const lineOperators = [...new Set(selectedInvoicesData.map(inv => inv['contract-customer-id']).filter(op => op))];
     const lineOperatorsText = lineOperators.length ? lineOperators.join(', ') : 'الكل';
 
@@ -591,46 +594,8 @@ async function exportSelectedReport() {
         count: selectedInvoicesData.length
     });
 
-        // ✅ عرض التقرير في نافذة معاينة بدلاً من التحميل المباشر
+    // ✅ عرض التقرير في نافذة معاينة
     showReportPreview(reportHtml);
-
-    if (typeof window.jspdf === 'undefined' || typeof window.html2canvas === 'undefined') {
-        showNotification('جاري تحميل مكتبات PDF...', 'info');
-        document.body.removeChild(tempDiv);
-        return;
-    }
-
-    showProgress('جاري إنشاء التقرير...', 30);
-    try {
-        await new Promise(resolve => setTimeout(resolve, 200));
-        const canvas = await html2canvas(tempDiv, {
-            scale: 1.5,
-            backgroundColor: '#ffffff',
-            logging: false,
-            useCORS: true,
-            windowWidth: tempDiv.scrollWidth,
-            windowHeight: tempDiv.scrollHeight
-        });
-        const imgData = canvas.toDataURL('image/jpeg', 0.85);
-        const { jsPDF } = window.jspdf;
-        const pdf = new jsPDF({
-            orientation: 'landscape',
-            unit: 'mm',
-            format: 'a4',
-            compress: true
-        });
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
-        pdf.save(`تقرير_فواتير_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.pdf`);
-        showNotification('تم تصدير التقرير بنجاح', 'success');
-    } catch (error) {
-        console.error('خطأ في إنشاء PDF:', error);
-        showNotification('حدث خطأ في إنشاء التقرير', 'error');
-    } finally {
-        document.body.removeChild(tempDiv);
-        setTimeout(hideProgress, 1500);
-    }
 }
 
 // ============================================
@@ -790,132 +755,6 @@ function showReportPreview(reportHtml) {
     });
 }
 
-// ============================================
-// تصدير تقرير مفصل للفواتير المحددة
-// ============================================
-async function exportSelectedReport() {
-    if (selectedInvoices.size === 0) {
-        showNotification('لم يتم تحديد أي فواتير', 'warning');
-        return;
-    }
-
-    // الحصول على الفواتير المحددة
-    const selectedInvoicesData = [];
-    for (let idx of selectedInvoices) {
-        if (idx >= 0 && idx < invoicesData.length) {
-            selectedInvoicesData.push(invoicesData[idx]);
-        }
-    }
-
-    if (selectedInvoicesData.length === 0) {
-        showNotification('لا توجد بيانات للفواتير المحددة', 'error');
-        return;
-    }
-
-    // ترتيب الفواتير حسب الرقم التسلسلي الفعلي (بعد البادئة)
-    selectedInvoicesData.sort((a, b) => {
-        const numA = getInvoiceSerialNumber(a['final-number']);
-        const numB = getInvoiceSerialNumber(b['final-number']);
-        return numA - numB;
-    });
-
-    // الحصول على فترة البحث من حقول التاريخ (إذا كانت موجودة)
-    const dateFromElem = document.getElementById('searchDateFrom');
-    const dateToElem = document.getElementById('searchDateTo');
-    let fromDate = dateFromElem?.value || '';
-    let toDate = dateToElem?.value || '';
-    if (fromDate && toDate) {
-        fromDate = fromDate.replace(/-/g, '/');
-        toDate = toDate.replace(/-/g, '/');
-    }
-
-    // استخراج الخطوط الملاحية الفريدة (contract-customer-id)
-    const lineOperators = [...new Set(selectedInvoicesData.map(inv => inv['contract-customer-id']).filter(op => op))];
-    const lineOperatorsText = lineOperators.length ? lineOperators.join(', ') : 'الكل';
-
-    // حساب الإجماليات
-    let totals = {
-        usadCharges: 0, usadTaxes: 0, usadTotal: 0,
-        egpCharges: 0, egpTaxes: 0, egpTotal: 0,
-        grandTotal: 0
-    };
-
-    selectedInvoicesData.forEach(inv => {
-        const currency = inv['currency'] || 'EGP';
-        const exchangeRate = inv['flex-string-06'] || 48.0215;
-        const martyr = (inv['final-number'] || '').startsWith('P') ? 0 : 5;
-        const total = (inv['total-total'] || 0) + martyr;
-
-        if (currency === 'USAD') {
-            totals.usadCharges += (inv['total-charges'] || 0) / exchangeRate;
-            totals.usadTaxes += (inv['total-taxes'] || 0) / exchangeRate;
-            totals.usadTotal += total / exchangeRate;
-        } else {
-            totals.egpCharges += (inv['total-charges'] || 0);
-            totals.egpTaxes += (inv['total-taxes'] || 0);
-            totals.egpTotal += total;
-        }
-        totals.grandTotal += total; // مجموع غير موحد العملات (للعرض فقط)
-    });
-
-    // بناء HTML التقرير
-    const reportHtml = generateReportHTML(selectedInvoicesData, {
-        fromDate, toDate,
-        lineOperatorsText,
-        totals,
-        count: selectedInvoicesData.length
-    });
-
-    // إنشاء PDF
-    const tempDiv = document.createElement('div');
-    tempDiv.style.position = 'absolute';
-    tempDiv.style.left = '-9999px';
-    tempDiv.style.top = '-9999px';
-    tempDiv.style.width = '1200px';
-    tempDiv.style.background = 'white';
-    tempDiv.style.padding = '20px';
-    tempDiv.style.direction = 'rtl';
-    tempDiv.innerHTML = reportHtml;
-    document.body.appendChild(tempDiv);
-
-    if (typeof window.jspdf === 'undefined' || typeof window.html2canvas === 'undefined') {
-        showNotification('جاري تحميل مكتبات PDF...', 'info');
-        document.body.removeChild(tempDiv);
-        return;
-    }
-
-    showProgress('جاري إنشاء التقرير...', 30);
-    try {
-        await new Promise(resolve => setTimeout(resolve, 200));
-        const canvas = await html2canvas(tempDiv, {
-            scale: 1.5,
-            backgroundColor: '#ffffff',
-            logging: false,
-            useCORS: true,
-            windowWidth: tempDiv.scrollWidth,
-            windowHeight: tempDiv.scrollHeight
-        });
-        const imgData = canvas.toDataURL('image/jpeg', 0.85);
-        const { jsPDF } = window.jspdf;
-        const pdf = new jsPDF({
-            orientation: 'landscape',
-            unit: 'mm',
-            format: 'a4',
-            compress: true
-        });
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
-        pdf.save(`تقرير_فواتير_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.pdf`);
-        showNotification('تم تصدير التقرير بنجاح', 'success');
-    } catch (error) {
-        console.error('خطأ في إنشاء PDF:', error);
-        showNotification('حدث خطأ في إنشاء التقرير', 'error');
-    } finally {
-        document.body.removeChild(tempDiv);
-        setTimeout(hideProgress, 1500);
-    }
-}
 // ============================================
 // دوال تحميل الشعار من Drive
 // ============================================
