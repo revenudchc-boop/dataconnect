@@ -3409,19 +3409,19 @@ function renderTableView(data) {
             </div>
             <table class="data-table">
                 <thead>
-                    <tr>
-                        <th style="width:40px;"><input type="checkbox" onclick="toggleAllCheckboxes(this)" id="selectAllCheckbox"></th>
-                        <th style="width:50px;">معاينة</th>
-                        <th>الرقم النهائي</th>
-                        <th>رقم المسودة</th>
-                        <th>العميل</th>
-                        <th>السفينة</th>
-                        <th>${currentInvoiceType === INVOICE_TYPES.POSTPONED ? 'IB ID / OB ID' : 'رقم البوليصة'}</th>
-                        <th>تاريخ الرحله</th>
-                        <th>الإجمالي (EGP)</th>
-                        <th>المبلغ بالعملة</th>
-                    </tr>
-                </thead>
+    <tr>
+        <th style="width:40px;"><input type="checkbox" onclick="toggleAllCheckboxes(this)" id="selectAllCheckbox"></th>
+        <th>الرقم النهائي</th>
+        <th>رقم المسودة</th>
+        <th>العميل</th>
+        <th>السفينة</th>
+        <th>${currentInvoiceType === INVOICE_TYPES.POSTPONED ? 'IB ID / OB ID' : 'رقم البوليصة'}</th>
+        <th>تاريخ الرحله</th>
+        <th>الإجمالي (EGP)</th>
+        <th>المبلغ بالعملة</th>
+        <th style="width:50px;">معاينة</th>
+    </tr>
+</thead>
                 <tbody>`;
     
     data.forEach(inv => {
