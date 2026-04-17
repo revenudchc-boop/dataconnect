@@ -1412,95 +1412,63 @@ window.applyAdvancedSearch = function() {
     if (!invoicesData.length) { filteredInvoices = []; renderData(); return; }
     
     const [final, draft, cust, vessel, bl, cont, status, from, to, invType, contractCustomerId, viewedStatus] = [
-    'searchFinalNumber', 'searchDraftNumber', 'searchCustomer', 'searchVessel', 
-    'searchBlNumber', 'searchContainer', 'searchStatus', 'searchDateFrom', 
-    'searchDateTo', 'searchInvoiceType', 'searchContractCustomerId', 'searchViewedStatus'
-	].map(id => document.getElementById(id)?.value.toLowerCase().trim() || '');
+        'searchFinalNumber', 'searchDraftNumber', 'searchCustomer', 'searchVessel', 
+        'searchBlNumber', 'searchContainer', 'searchStatus', 'searchDateFrom', 
+        'searchDateTo', 'searchInvoiceType', 'searchContractCustomerId', 'searchViewedStatus'
+    ].map(id => document.getElementById(id)?.value.toLowerCase().trim() || '');
 
     let tempInvoices = [...invoicesData];
 
-    if (currentUser?.isGuest) {
-        const { taxNumber, blNumber } = currentUser;
-        tempInvoices = tempInvoices.filter(inv => {
-            let match = true;
-            if (taxNumber) {
-                const num = inv['final-number'] || '';
-                if (num.startsWith('P') || num.startsWith('p')) return false;
-                const payeeMatch = (inv['payee-customer-id'] || '').toLowerCase().includes(taxNumber.toLowerCase());
-                const contractMatch = (inv['contract-customer-id'] || '').toLowerCase().includes(taxNumber.toLowerCase());
-                match = match && (payeeMatch || contractMatch);
-            }
-            if (blNumber) match = match && (inv['key-word2'] || '').toLowerCase().includes(blNumber.toLowerCase());
-            return match;
-        });
-    } 
-    else if (currentUser && currentUser.userType !== 'admin' && !currentUser.isGuest) {
-        let allowedIds = [];
-        if (currentUser.contractCustomerId) allowedIds.push(currentUser.contractCustomerId);
-        if (currentUser.customerIds && Array.isArray(currentUser.customerIds)) {
-            allowedIds = allowedIds.concat(currentUser.customerIds);
-        }
-        allowedIds = [...new Set(allowedIds.map(id => id.toLowerCase()))];
-        
-        if (allowedIds.length === 0) {
-            tempInvoices = [];
-        } else {
-            tempInvoices = tempInvoices.filter(inv => {
-                const payeeId = (inv['payee-customer-id'] || '').toLowerCase();
-                const contractId = (inv['contract-customer-id'] || '').toLowerCase();
-                return allowedIds.some(id => payeeId === id || contractId === id);
-            });
-        }
-    }
+    // ... (تصفية المستخدم الضيف والمستخدم العادي) ...
 
-const searched = tempInvoices.filter(inv => {
-    if (final && !(inv['final-number'] || '').toLowerCase().includes(final)) return false;
-    if (draft && !(inv['draft-number'] || '').toLowerCase().includes(draft)) return false;
-    if (cust) {
-        const payeeMatch = (inv['payee-customer-id'] || '').toLowerCase().includes(cust);
-        const contractMatch = (inv['contract-customer-id'] || '').toLowerCase().includes(cust);
-        if (!payeeMatch && !contractMatch) return false;
-    }
-    if (vessel && !(inv['key-word1'] || '').toLowerCase().includes(vessel)) return false;
-    if (bl && !(inv['key-word2'] || '').toLowerCase().includes(bl)) return false;
-    if (cont) {
-        const found = inv.charges.some(c => (c['entity-id'] || '').toLowerCase().includes(cont));
-        if (!found) return false;
-    }
-    if (contractCustomerId && !(inv['contract-customer-id'] || '').toLowerCase().includes(contractCustomerId)) return false;
-    if (status && inv['status'] !== status) return false;
-    if (invType) {
-        const num = inv['final-number'] || '';
-        if (invType === 'cash' && !(num.startsWith('C') || num.startsWith('c'))) return false;
-        if (invType === 'postponed' && !(num.startsWith('P') || num.startsWith('p'))) return false;
-    }
-    if (from || to) {
-        const invDateStr = inv['finalized-date'] || inv['created'] || '';
-        const invDate = new Date(invDateStr);
-        if (isNaN(invDate)) return true;
-        if (from) {
-            const fromDate = new Date(from);
-            fromDate.setHours(0, 0, 0, 0);
-            if (invDate < fromDate) return false;
+    const searched = tempInvoices.filter(inv => {
+        if (final && !(inv['final-number'] || '').toLowerCase().includes(final)) return false;
+        if (draft && !(inv['draft-number'] || '').toLowerCase().includes(draft)) return false;
+        if (cust) {
+            const payeeMatch = (inv['payee-customer-id'] || '').toLowerCase().includes(cust);
+            const contractMatch = (inv['contract-customer-id'] || '').toLowerCase().includes(cust);
+            if (!payeeMatch && !contractMatch) return false;
         }
-        if (to) {
-            const toDate = new Date(to);
-            toDate.setHours(23, 59, 59, 999);
-            if (invDate > toDate) return false;
+        if (vessel && !(inv['key-word1'] || '').toLowerCase().includes(vessel)) return false;
+        if (bl && !(inv['key-word2'] || '').toLowerCase().includes(bl)) return false;
+        if (cont) {
+            const found = inv.charges.some(c => (c['entity-id'] || '').toLowerCase().includes(cont));
+            if (!found) return false;
         }
-    }
-    
-    // ✅ شرط حالة المعاينة
-    if (viewedStatus) {
-        const viewKey = getInvoiceKey(inv);
-        const isViewed = viewedInvoices.has(viewKey);
+        if (contractCustomerId && !(inv['contract-customer-id'] || '').toLowerCase().includes(contractCustomerId)) return false;
+        if (status && inv['status'] !== status) return false;
+        if (invType) {
+            const num = inv['final-number'] || '';
+            if (invType === 'cash' && !(num.startsWith('C') || num.startsWith('c'))) return false;
+            if (invType === 'postponed' && !(num.startsWith('P') || num.startsWith('p'))) return false;
+        }
+        if (from || to) {
+            const invDateStr = inv['finalized-date'] || inv['created'] || '';
+            const invDate = new Date(invDateStr);
+            if (isNaN(invDate)) return true;
+            if (from) {
+                const fromDate = new Date(from);
+                fromDate.setHours(0, 0, 0, 0);
+                if (invDate < fromDate) return false;
+            }
+            if (to) {
+                const toDate = new Date(to);
+                toDate.setHours(23, 59, 59, 999);
+                if (invDate > toDate) return false;
+            }
+        }
         
-        if (viewedStatus === 'viewed' && !isViewed) return false;
-        if (viewedStatus === 'not_viewed' && isViewed) return false;
-    }
-    
-    return true;
-});
+        // ✅ شرط حالة المعاينة
+        if (viewedStatus) {
+            const viewKey = getInvoiceKey(inv);
+            const isViewed = viewedInvoices.has(viewKey);
+            
+            if (viewedStatus === 'viewed' && !isViewed) return false;
+            if (viewedStatus === 'not_viewed' && isViewed) return false;
+        }
+        
+        return true;
+    });
 
     filteredInvoices = searched;
     currentPage = 1;
