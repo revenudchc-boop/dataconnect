@@ -3451,21 +3451,21 @@ function renderTableView(data) {
 		const viewKey = getInvoiceKey(inv);
         const isViewed = viewedInvoices.has(viewKey) ? 'checked' : '';
         
-        html += `<tr onclick="window.handleRowClick(${idx}, event)" class="${selectedClass}" data-index="${idx}" data-key="${viewKey}">
-            <td onclick="event.stopPropagation()"><input type="checkbox" class="invoice-checkbox" data-index="${idx}" ${isSelected} onchange="updateSelectedInvoices(${idx}, this.checked)"></td>
-            <td class="viewed-cell" onclick="event.stopPropagation()">
-                <input type="checkbox" class="viewed-checkbox" data-key="${viewKey}" ${isViewed} 
-                       onchange="toggleInvoiceViewed('${viewKey}', this.checked, '${finalNum}', '${draftNum}')">
-            </td>
-            <td>${inv['final-number'] || '-'} (${invoiceTypeDisplay})</td>
-            <td>${inv['draft-number'] || '-'}</td>
-            <td>${(inv['payee-customer-id'] || '-').substring(0,20)}</td>
-            <td>${inv['key-word1'] || '-'}</td>
-            <td>${inv['key-word2'] || '-'}</td>
-            <td>${inv['flex-date-02'] ? new Date(inv['flex-date-02']).toLocaleDateString('ar-EG') : '-'}</td>
-            <td>${formatNumberWithCommas(totalOriginal.toFixed(2))}</td>
-            <td>${formatNumberWithCommas(displayAmount)} ${displayCurrency}</td>
-        </tr>`;
+html += `<tr onclick="window.handleRowClick(${idx}, event)" class="${selectedClass}" data-index="${idx}" data-key="${viewKey}">
+    <td onclick="event.stopPropagation()"><input type="checkbox" class="invoice-checkbox" data-index="${idx}" ${isSelected} onchange="updateSelectedInvoices(${idx}, this.checked)"></td>
+    <td>${inv['final-number'] || '-'} (${invoiceTypeDisplay})<\/td>
+    <td>${inv['draft-number'] || '-'}<\/td>
+    <td>${(inv['payee-customer-id'] || '-').substring(0,20)}<\/td>
+    <td>${inv['key-word1'] || '-'}<\/td>
+    <td>${inv['key-word2'] || '-'}<\/td>
+    <td>${inv['flex-date-02'] ? new Date(inv['flex-date-02']).toLocaleDateString('ar-EG') : '-'}<\/td>
+    <td>${formatNumberWithCommas(totalOriginal.toFixed(2))}<\/td>
+    <td>${formatNumberWithCommas(displayAmount)} ${displayCurrency}<\/td>
+    <td class="viewed-cell" onclick="event.stopPropagation()">
+        <input type="checkbox" class="viewed-checkbox" data-key="${viewKey}" ${isViewed} 
+               onchange="toggleInvoiceViewed('${viewKey}', this.checked, '${finalNum}', '${draftNum}')">
+    <\/td>
+</tr>`;
     });
     
     html += '</tbody></table></div>';
