@@ -400,7 +400,6 @@ function generateReportHTML(invoices, reportInfo, logoBase64) {
     const { fromDate, toDate, lineOperatorsText, totals, count } = reportInfo;
     const currentDate = new Date().toISOString().slice(0,10).replace(/-/g, '/');
     
-    // استخدام الشعار الحقيقي إذا وُجد
     const logoSrc = logoBase64 || '';
     const logoHtml = logoSrc 
         ? `<img src="${logoSrc}" style="width:100%; height:100%; object-fit: cover; border-radius: 50%;">`
@@ -453,9 +452,9 @@ function generateReportHTML(invoices, reportInfo, logoBase64) {
             .report-header { background: linear-gradient(135deg, #1e3c72, #2a5298); color: white; padding: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
             .logo-area { display: flex; align-items: center; gap: 15px; }
             .logo-placeholder { width: 70px; height: 70px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 3px solid #ffd700; overflow: hidden; }
-            .company-title h1 { font-size: 1.3em; margin: 0; }
-            .company-title p { margin: 5px 0 0; font-size: 0.7em; }
-            .tax-info { font-size: 0.8em; background: rgba(255,255,255,0.2); padding: 8px 15px; border-radius: 8px; }
+            .company-title h1 { font-size: 1.3em; margin: 0; font-weight: bold; }
+            .company-title p { margin: 5px 0 0; font-size: 0.8em; }
+            .tax-info { font-size: 0.9em; background: rgba(255,255,255,0.2); padding: 8px 15px; border-radius: 8px; font-weight: bold; }
             .report-info { background: #f8f9fa; padding: 12px 20px; display: flex; flex-wrap: wrap; gap: 15px; font-weight: bold; border-bottom: 1px solid #ddd; }
             .report-table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 0.75em; }
             .report-table th, .report-table td { border: 1px solid #aaa; padding: 8px 4px; text-align: center; }
@@ -497,7 +496,8 @@ function generateReportHTML(invoices, reportInfo, logoBase64) {
             <tfoot>
                 <tr class="total-row"><td colspan="6" style="text-align:left;">الإجمالي العام</td>
                 <td>${totals.usadCharges.toFixed(2)}</td><td>${totals.usadTaxes.toFixed(2)}</td>
-                <td>${totals.egpCharges.toFixed(2)}</td><td>${totals.egpTaxes.toFixed(2)}</td><td>-</td></tr>
+                <td>${totals.egpCharges.toFixed(2)}</td><td>${totals.egpTaxes.toFixed(2)}</td><td>-</td>
+                </tr>
             </tfoot>
         </table>
         <div class="summary-section">
@@ -518,7 +518,8 @@ function generateReportHTML(invoices, reportInfo, logoBase64) {
             </div>
         </div>
         <div class="report-footer">
-            <p>شكراً لتعاملكم مع الشركة - تم إنشاء هذا التقرير إلكترونياً - تاريخ الطباعة: ${currentDate}</p>
+            <p>شكراً لتعاملكم مع شركة دمياط لتداول الحاويات و البضائع</p>
+            <p>تم إنشاء هذا التقرير إلكترونياً - تاريخ الطباعة: ${currentDate}</p>
         </div>
     </body>
     </html>`;
