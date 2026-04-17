@@ -395,6 +395,36 @@ function getInvoiceSerialNumber(finalNumber) {
     return 0;
 }
 
+
+// دالة لتقسيم التقرير الطويل إلى صفحات متعددة مع تكرار الرأس
+function splitReportIntoPages(reportHtml, rowsPerPage = 20) {
+    // إنشاء عنصر مؤقت لتحليل HTML
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = reportHtml;
+    const table = tempDiv.querySelector('.report-table tbody');
+    if (!table) return [reportHtml];
+    
+    const allRows = table.querySelectorAll('tr');
+    if (allRows.length <= rowsPerPage) return [reportHtml];
+    
+    const pagesHtml = [];
+    const theadHtml = tempDiv.querySelector('.report-table thead').outerHTML;
+    const beforeTableHtml = reportHtml.split('<tbody>')[0] + '<tbody>';
+    const afterTableHtml = '</tbody>' + reportHtml.split('</tbody>')[1];
+    
+    // تقسيم الصفوف إلى صفحات
+    for (let i = 0; i < allRows.length; i += rowsPerPage) {
+        const pageRows = Array.from(allRows).slice(i, i + rowsPerPage);
+        let pageBody = '';
+        pageRows.forEach(row => pageBody += row.outerHTML);
+        
+        const pageFullHtml = beforeTableHtml + pageBody + afterTableHtml;
+        pagesHtml.push(pageFullHtml);
+    }
+    
+    return pagesHtml;
+}
+
 // دالة إنشاء HTML للتقرير المفصل
 function generateReportHTML(invoices, reportInfo, logoBase64) {
     const { fromDate, toDate, lineOperatorsText, totals, count } = reportInfo;
@@ -712,22 +742,38 @@ function showReportPreview(reportHtml) {
         printWindow.focus();
         setTimeout(() => printWindow.print(), 500);
     };
+    
+    // زر تحميل PDF مع تقسيم الصفحات
     document.getElementById('downloadReportPdfBtn').onclick = async () => {
-        // إخفاء الزر مؤقتاً للتصدير
-        const tempDiv = document.createElement('div');
-        tempDiv.style.position = 'absolute';
-        tempDiv.style.left = '-9999px';
-        tempDiv.style.top = '-9999px';
-        tempDiv.style.width = '1200px';
-        tempDiv.style.background = 'white';
-        tempDiv.style.padding = '20px';
-        tempDiv.style.direction = 'rtl';
-        tempDiv.innerHTML = reportHtml;
-        document.body.appendChild(tempDiv);
+        // تقسيم التقرير إلى صفحات (كل صفحة 15 صفاً)
+        const pagesHtml = splitReportIntoPages(reportHtml, 15);
         
         if (typeof window.jspdf !== 'undefined' && typeof window.html2canvas !== 'undefined') {
-            try {
-                await new Promise(resolve => setTimeout(resolve, 200));
+            showProgress('جاري إنشاء PDF...', 10);
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF({
+                orientation: 'landscape',
+                unit: 'mm',
+                format: 'a4',
+                compress: true
+            });
+            
+            for (let pageIdx = 0; pageIdx < pagesHtml.length; pageIdx++) {
+                showProgress(`جاري معالجة الصفحة ${pageIdx + 1} من ${pagesHtml.length}...`, Math.round((pageIdx / pagesHtml.length) * 80));
+                
+                // إنشاء عنصر مؤقت للصفحة الحالية
+                const tempDiv = document.createElement('div');
+                tempDiv.style.position = 'absolute';
+                tempDiv.style.left = '-9999px';
+                tempDiv.style.top = '-9999px';
+                tempDiv.style.width = '1100px';
+                tempDiv.style.background = 'white';
+                tempDiv.style.padding = '20px';
+                tempDiv.style.direction = 'rtl';
+                tempDiv.innerHTML = pagesHtml[pageIdx];
+                document.body.appendChild(tempDiv);
+                
+                await new Promise(resolve => setTimeout(resolve, 100));
                 const canvas = await html2canvas(tempDiv, {
                     scale: 1.5,
                     backgroundColor: '#ffffff',
@@ -736,27 +782,24 @@ function showReportPreview(reportHtml) {
                     windowWidth: tempDiv.scrollWidth,
                     windowHeight: tempDiv.scrollHeight
                 });
+                
                 const imgData = canvas.toDataURL('image/jpeg', 0.85);
-                const { jsPDF } = window.jspdf;
-                const pdf = new jsPDF({
-                    orientation: 'landscape',
-                    unit: 'mm',
-                    format: 'a4',
-                    compress: true
-                });
                 const pdfWidth = pdf.internal.pageSize.getWidth();
                 const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+                
+                if (pageIdx > 0) pdf.addPage();
                 pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
-                pdf.save(`تقرير_فواتير_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.pdf`);
-                showNotification('تم تصدير التقرير بنجاح', 'success');
-            } catch (err) {
-                console.error(err);
-                showNotification('حدث خطأ في تصدير PDF', 'error');
+                
+                document.body.removeChild(tempDiv);
             }
+            
+            showProgress('جاري حفظ الملف...', 100);
+            pdf.save(`تقرير_فواتير_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.pdf`);
+            showNotification(`تم تصدير التقرير (${pagesHtml.length} صفحة) بنجاح`, 'success');
+            hideProgress();
         } else {
             showNotification('مكتبات PDF غير جاهزة', 'error');
         }
-        document.body.removeChild(tempDiv);
     };
     
     // إغلاق النافذة عند النقر خارج المحتوى
