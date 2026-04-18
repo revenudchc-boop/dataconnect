@@ -682,20 +682,31 @@ function generateReportHTML(invoices, reportInfo, logoBase64) {
 			.company-title h1 { font-size: 1.3em; margin: 0; }
 			.company-title p { margin: 5px 0 0; font-size: 0.8em; }
 			.tax-info { font-size: 0.9em; background: rgba(255,255,255,0.2); padding: 8px 15px; border-radius: 8px; }
-			.report-info { background: #f8f9fa; padding: 12px 20px; display: flex; flex-wrap: wrap; gap: 15px; font-weight: bold; border-bottom: 1px solid #ddd; }
+			.report-info { background: #f8f9fa; padding: 12px 20px; display: flex; flex-wrap: wrap; gap: 15px; border-bottom: 1px solid #ddd; }
 			.report-table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 0.75em; }
 			.report-table th, .report-table td { border: 1px solid #aaa; padding: 8px 4px; text-align: center; }
 			.report-table th { background: #4361ee; color: white; }
-			.total-row { background: #e8f4f8; font-weight: bold; }
-			.page-total-row { background-color: #e8f4f8; font-weight: bold; }
-			.grand-total-row { background-color: #d1ecf1; font-weight: bold; }
+			.total-row { background: #e8f4f8; }
+			.page-total-row { background-color: #e8f4f8; }
+			.grand-total-row { background-color: #d1ecf1; }
 			.summary-section { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px; }
 			.summary-box { flex: 1; border-right: 4px solid #4361ee; background: #f8f9fa; padding: 12px; border-radius: 8px; }
 			.summary-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dashed #ccc; }
-			.summary-row.total { font-weight: bold; color: #1e3c72; border-bottom: none; }
+			.summary-row.total { color: #1e3c72; border-bottom: none; }
 			.summary-row span:last-child { white-space: nowrap; direction: ltr; text-align: left; font-family: monospace; font-size: 0.85em; }
 			.report-footer { text-align: center; margin-top: 20px; padding: 10px; background: #1e3c72; color: white; font-size: 0.7em; }
 			@media print { body { padding: 0; } }
+			
+			/* ✅ جعل جميع الأرقام في الجدول عريضة */
+			.report-table td {
+				font-weight: bold;
+			}
+			
+			/* ✅ جعل أرقام الملخص عريضة وأكبر قليلاً */
+			.summary-box .summary-row span:last-child {
+				font-weight: bold;
+				font-size: 1.1em;
+			}
 		</style>
     </head>
     <body>
@@ -723,14 +734,14 @@ function generateReportHTML(invoices, reportInfo, logoBase64) {
         
         <div class="summary-section">
             <div class="summary-box"><h4>📊 ملخص العملة USAD</h4>
-                <div class="summary-row"><span>إجمالي المبلغ (USAD):</span><span>${totals.usadCharges.toFixed(2)} دولار</span></div>
-                <div class="summary-row"><span>إجمالي الضريبة (USAD):</span><span>${totals.usadTaxes.toFixed(2)} دولار</span></div>
-                <div class="summary-row total"><span>الإجمالي الكلي (USAD):</span><span>${totals.usadTotal.toFixed(2)} دولار</span></div>
+				<div class="summary-row"><span>إجمالي المبلغ (USAD):</span><span style="font-weight: bold; font-size: 1.1em;">${totals.usadCharges.toFixed(2)} دولار</span></div>
+				<div class="summary-row"><span>إجمالي الضريبة (USAD):</span><span style="font-weight: bold; font-size: 1.1em;">${totals.usadTaxes.toFixed(2)} دولار</span></div>
+				<div class="summary-row total"><span>الإجمالي الكلي (USAD):</span><span style="font-weight: bold; font-size: 1.1em;">${totals.usadTotal.toFixed(2)} دولار</span></div>
             </div>
             <div class="summary-box"><h4>📊 ملخص العملة EGP</h4>
-                <div class="summary-row"><span>إجمالي المبلغ (EGP):</span><span>${totals.egpCharges.toFixed(2)} جنيه</span></div>
-                <div class="summary-row"><span>إجمالي الضريبة (EGP):</span><span>${totals.egpTaxes.toFixed(2)} جنيه</span></div>
-                <div class="summary-row total"><span>الإجمالي الكلي (EGP):</span><span>${totals.egpTotal.toFixed(2)} جنيه</span></div>
+				<div class="summary-row"><span>إجمالي المبلغ (EGP):</span><span style="font-weight: bold; font-size: 1.1em;">${totals.egpCharges.toFixed(2)} جنيه</span></div>
+				<div class="summary-row"><span>إجمالي الضريبة (EGP):</span><span style="font-weight: bold; font-size: 1.1em;">${totals.egpTaxes.toFixed(2)} جنيه</span></div>
+				<div class="summary-row total"><span>الإجمالي الكلي (EGP):</span><span style="font-weight: bold; font-size: 1.1em;">${totals.egpTotal.toFixed(2)} جنيه</span></div>
             </div>
         </div>
         
@@ -6861,4 +6872,84 @@ async function exportDirectPDF() {
     // ... (انسخ الكود من exportSelectedReport حتى إنشاء reportHtmlWithoutSummary)
     // ثم:
     await exportReportAsProfessionalPDF(reportHtmlWithoutSummary, 'تقرير_فواتير');
+}
+
+
+async function markOldInvoices() {
+    // التحقق من وجود فواتير
+    if (!invoicesData.length) {
+        showNotification('لا توجد فواتير للتحميل', 'warning');
+        return;
+    }
+    
+    // طلب التاريخ من المستخدم
+    const dateInput = prompt('أدخل التاريخ (بالصيغة YYYY-MM-DD) لتعيين الفواتير الأقدم من هذا التاريخ كمُعالجة:\nمثال: 2025-01-01\n\nاتركه فارغاً لتعيين جميع فواتيرك');
+    
+    let cutoffDate = null;
+    if (dateInput && dateInput.trim() !== '') {
+        cutoffDate = new Date(dateInput);
+        if (isNaN(cutoffDate)) {
+            showNotification('التاريخ غير صحيح. استخدم الصيغة YYYY-MM-DD', 'error');
+            return;
+        }
+    }
+    
+    // الحصول على الفواتير التي تخص المستخدم الحالي فقط
+    const userInvoices = invoicesData.filter(inv => checkIfInvoiceBelongsToUser(inv));
+    
+    if (userInvoices.length === 0) {
+        showNotification('لا توجد فواتير تخص هذا المستخدم', 'warning');
+        return;
+    }
+    
+    let markedCount = 0;
+    let skippedCount = 0;
+    
+    for (const inv of userInvoices) {
+        const viewKey = getInvoiceKey(inv);
+        
+        // إذا كانت الفاتورة محددة بالفعل، تخطيها
+        if (viewedInvoices.has(viewKey)) {
+            skippedCount++;
+            continue;
+        }
+        
+        // التحقق من التاريخ إذا تم تحديد تاريخ
+        if (cutoffDate) {
+            const invoiceDateStr = inv['finalized-date'] || inv['created'] || '';
+            if (!invoiceDateStr) continue;
+            const invoiceDate = new Date(invoiceDateStr);
+            if (isNaN(invoiceDate)) continue;
+            if (invoiceDate >= cutoffDate) continue; // فقط الفواتير الأقدم من التاريخ المحدد
+        }
+        
+        // إضافة الفاتورة إلى قائمة المعاينة
+        viewedInvoices.add(viewKey);
+        markedCount++;
+    }
+    
+    if (markedCount === 0) {
+        showNotification(`لا توجد فواتير جديدة لتحديدها (تم تخطي ${skippedCount} فاتورة محددة مسبقاً)`, 'info');
+        return;
+    }
+    
+    // حفظ التغييرات (نفس آلية الـ checkbox الفردي)
+    saveViewedInvoices(); // حفظ محلياً أولاً
+    
+    // إذا كان المستخدم لديه access_token (مدير أو أي مستخدم سجل دخوله بحساب Google)، نحفظ على Drive أيضاً
+    if (driveAccessToken) {
+        showProgress('جاري حفظ العلامات على Drive...', 50);
+        const saved = await saveViewedToDrive();
+        if (saved) {
+            showNotification(`✅ تم تحديد ${markedCount} فاتورة قديمة وحفظها على Drive (تخطي ${skippedCount})`, 'success');
+        } else {
+            showNotification(`⚠️ تم تحديد ${markedCount} فاتورة ولكن فشل الحفظ على Drive (تم الحفظ محلياً فقط)`, 'warning');
+        }
+        hideProgress();
+    } else {
+        showNotification(`✅ تم تحديد ${markedCount} فاتورة قديمة وحفظها محلياً (تخطي ${skippedCount})`, 'success');
+    }
+    
+    // تحديث واجهة الجدول
+    renderData();
 }
