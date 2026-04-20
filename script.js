@@ -52,6 +52,12 @@ let viewModeCredit = 'cards';
 let selectedCreditNotes = new Set();
 // متغير لتخزين الفواتير التي تمت معاينتها
 let viewedInvoices = new Set();
+// ============================================
+// إعدادات التحديث التلقائي (Auto Refresh)
+// ============================================
+let autoRefreshEnabled = false;      // هل التحديث التلقائي مفعل؟
+let autoRefreshInterval = 5;         // الفاصل الزمني بالدقائق (الافتراضي 5 دقائق)
+let autoRefreshTimer = null;         // معرف المؤقت
 
 // نظام المستخدمين
 let users = [];
@@ -1421,13 +1427,21 @@ function checkSession() {
             document.getElementById('mainApp').style.display = 'block';
             updateUserInterface();
             addDatabaseControls();
-            
-            // ✅ فقط تحميل الفواتير (وهو سيقوم بتحميل العلامات تلقائياً بعد الانتهاء)
-            setTimeout(() => loadInvoicesFromDrive(), 500);
-            
-            // تحديث المستخدمين كل 5 دقائق (للمدير فقط)
+
+            // ✅ الخطوة 1: تحميل البيانات فوراً (بدون انتظار المؤقت)
+            showNotification('جاري تحميل البيانات...', 'info');
+            loadInvoicesFromDrive().then(() => {
+                console.log('✅ تم التحميل الأولي بنجاح');
+            }).catch(err => {
+                console.error('❌ فشل التحميل الأولي:', err);
+            });
+
+            // ✅ الخطوة 2: بدء المؤقت (بعد تعيين الإعدادات، لكن لا يمنع التحميل الأولي)
+            applyRefreshSetting();
+
+            // تحديث المستخدمين كل 5 دقائق للمدير (مستقل)
             if (currentUser.userType === 'admin') {
-                setInterval(async () => { 
+                setInterval(async () => {
                     if (currentUser?.userType === 'admin') {
                         await loadUsersFromDrive();
                     }
@@ -1465,7 +1479,13 @@ window.handleLogin = async function() {
     document.getElementById('mainApp').style.display = 'block';
     updateUserInterface();
     addDatabaseControls();
-    setTimeout(() => loadInvoicesFromDrive(), 500);
+
+    // ✅ الخطوة 1: تحميل البيانات فوراً (بدون انتظار)
+    showNotification('جاري تحميل البيانات...', 'info');
+    await loadInvoicesFromDrive();  // ننتظر التحميل (اختياري)
+    
+    // ✅ الخطوة 2: بدء المؤقت (إذا كان مفعلاً)
+    applyRefreshSetting();
 };
 
 window.handleGuestLogin = async function() {
@@ -1486,7 +1506,13 @@ window.handleGuestLogin = async function() {
     showNotification(msg, 'info');
 };
 
-window.logout = function() { currentUser = null; sessionStorage.removeItem('currentUser'); location.reload(); };
+window.logout = function() {
+    // ✅ إيقاف التحديث التلقائي عند تسجيل الخروج
+    stopRefreshTimer();
+    currentUser = null;
+    sessionStorage.removeItem('currentUser');
+    location.reload();
+};
 
 function updateUserInterface() {
     if (!currentUser) return;
@@ -3020,11 +3046,10 @@ async function exportSingleInvoice() {
     
     const element = document.getElementById('invoicePrint');
     if (!element) {
-        showNotification('لا توجد فاتورة للتصدير', 'error');
+        showNotification('لا توجد فاتورة للطباعة', 'error');
         return;
     }
     
-    // ✅ الحصول على رقم الفاتورة من البيانات المخزنة
     const inv = invoicesData[selectedInvoiceIndex];
     if (!inv) {
         showNotification('لا توجد بيانات للفاتورة', 'error');
@@ -3038,16 +3063,26 @@ async function exportSingleInvoice() {
     document.body.appendChild(loading);
     
     try {
+        // تجهيز الفاتورة للتصوير
+        const originalHeight = element.style.height;
+        const originalOverflow = element.style.overflow;
+        element.style.height = 'auto';
+        element.style.overflow = 'visible';
+        
+        // التقاط صورة كاملة بدقة عالية
         const canvas = await html2canvas(element, {
-            scale: 1.5,
+            scale: 2.8,          // دقة أعلى
             backgroundColor: '#ffffff',
             logging: false,
-            allowTaint: true,
             useCORS: true,
-            imageTimeout: 0
+            windowWidth: element.scrollWidth,
+            windowHeight: element.scrollHeight
         });
         
-        const imgData = canvas.toDataURL('image/jpeg', 0.85);
+        // استعادة الخصائص
+        element.style.height = originalHeight;
+        element.style.overflow = originalOverflow;
+        
         const { jsPDF } = window.jspdf;
         const pdf = new jsPDF({
             orientation: 'portrait',
@@ -3056,20 +3091,76 @@ async function exportSingleInvoice() {
             compress: true
         });
         
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+        // الهوامش (ملم)
+        const marginTop = 12;
+        const marginBottom = 12;
+        const marginLeft = 8;
+        const marginRight = 8;
         
-        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+        const pdfWidth = pdf.internal.pageSize.getWidth();   // 210 مم
+        const pdfHeight = pdf.internal.pageSize.getHeight(); // 297 مم
+        
+        const contentWidth = pdfWidth - marginLeft - marginRight;
+        const availableHeight = pdfHeight - marginTop - marginBottom;
+        
+        const imgWidth = canvas.width;
+        const imgHeight = canvas.height;
+        const scaleX = contentWidth / imgWidth;
+        const totalImgHeightMM = imgHeight * scaleX;
+        
+        // تداخل بين الصفحات (بالبكسل) - لمنع قطع النصوص
+        const overlapPx = 25;  // 25 بكسل تداخل (حوالي 5-6 ملم)
+        const overlapMM = overlapPx * scaleX;
+        
+        // حساب عدد الصفحات مع مراعاة التداخل
+        let pages = Math.ceil((totalImgHeightMM - overlapMM) / (availableHeight - overlapMM));
+        if (pages < 1) pages = 1;
+        
+        showProgress(`جاري إنشاء ${pages} صفحة...`, 10);
+        
+        for (let i = 0; i < pages; i++) {
+            if (i > 0) pdf.addPage();
+            
+            // حساب بداية ونهاية الشريحة بالبكسل مع التداخل
+            let startY_px = i * (availableHeight / scaleX);
+            if (i > 0) startY_px -= overlapPx; // تراجع للخلف قليلاً لتجنب القطع
+            
+            // التأكد من عدم تجاوز الحدود
+            startY_px = Math.max(0, startY_px);
+            let endY_px = startY_px + (availableHeight / scaleX) + overlapPx;
+            endY_px = Math.min(imgHeight, endY_px);
+            
+            const sliceHeight_px = endY_px - startY_px;
+            if (sliceHeight_px <= 0) continue;
+            
+            // إنشاء Canvas للشريحة
+            const sliceCanvas = document.createElement('canvas');
+            sliceCanvas.width = imgWidth;
+            sliceCanvas.height = sliceHeight_px;
+            const ctx = sliceCanvas.getContext('2d');
+            ctx.drawImage(canvas, 0, startY_px, imgWidth, sliceHeight_px, 0, 0, imgWidth, sliceHeight_px);
+            
+            const sliceImgData = sliceCanvas.toDataURL('image/jpeg', 0.9);
+            const sliceHeightMM = sliceHeight_px * scaleX;
+            
+            pdf.addImage(sliceImgData, 'JPEG', marginLeft, marginTop, contentWidth, sliceHeightMM);
+            
+            showProgress(`الصفحة ${i+1} من ${pages}`, Math.round(((i+1)/pages)*100));
+        }
+        
         pdf.save(`فاتورة-${invoiceNumber}.pdf`);
+        showNotification(`تم التصدير (${pages} صفحات) بنجاح`, 'success');
         
-        showNotification('تم التصدير بنجاح', 'success');
     } catch (error) {
-        console.error('خطأ في إنشاء PDF:', error);
-        showNotification('حدث خطأ في إنشاء PDF: ' + error.message, 'error');
+        console.error(error);
+        showNotification('حدث خطأ: ' + error.message, 'error');
     } finally {
         loading.remove();
+        hideProgress();
     }
 }
+
+window.exportSingleInvoice = exportSingleInvoice;
 
 async function exportMultipleInvoices(indices) {
     if (typeof window.jspdf === 'undefined' || typeof window.html2canvas === 'undefined') {
@@ -4054,17 +4145,16 @@ function renderTableView(data) {
                     <button class="btn btn-secondary" onclick="deselectAllInvoices()"><i class="fas fa-times"></i> إلغاء الكل</button>
                 </div>
                 <div class="export-buttons">
-					<span id="selectedCount" style="margin-left:15px; font-weight:bold;">0</span> فاتورة محددة
-					<button class="btn btn-primary" onclick="exportSelectedInvoices()" id="exportSelectedBtn" disabled><i class="fas fa-file-pdf"></i> PDF</button>
-					<button class="btn btn-success" onclick="exportSelectedInvoicesExcel()" id="exportSelectedExcelBtn" disabled><i class="fas fa-file-excel"></i> Excel</button>
-					<button class="btn btn-info" onclick="exportSelectedContainers()" id="exportContainersBtn" disabled style="background: #4cc9f0; color: white;">
-						<i class="fas fa-container-storage"></i> تصدير الحاويات
-					</button>
-					<!-- ✅ زر واحد فقط: مطالبة تحصيل -->
-					<button class="btn btn-secondary" onclick="exportSelectedReport()">
-						<i class="fas fa-file-invoice-dollar"></i> مطالبة تحصيل
-					</button>
-				</div>
+                    <span id="selectedCount" style="margin-left:15px; font-weight:bold;">0</span> فاتورة محددة
+                    <button class="btn btn-primary" onclick="exportSelectedInvoices()" id="exportSelectedBtn" disabled><i class="fas fa-file-pdf"></i> PDF</button>
+                    <button class="btn btn-success" onclick="exportSelectedInvoicesExcel()" id="exportSelectedExcelBtn" disabled><i class="fas fa-file-excel"></i> Excel</button>
+                    <button class="btn btn-info" onclick="exportSelectedContainers()" id="exportContainersBtn" disabled style="background: #4cc9f0; color: white;">
+                        <i class="fas fa-container-storage"></i> تصدير الحاويات
+                    </button>
+                    <button class="btn btn-secondary" onclick="exportSelectedReport()">
+                        <i class="fas fa-file-invoice-dollar"></i> مطالبة تحصيل
+                    </button>
+                </div>
             </div>
             <table class="data-table">
                 <thead>
@@ -4073,6 +4163,7 @@ function renderTableView(data) {
                         <th style="width:50px;">معاينة</th>
                         <th>الرقم النهائي</th>
                         <th>رقم المسودة</th>
+                        <th>تاريخ الفاتورة</th>   <!-- ✅ تم النقل إلى هنا -->
                         <th>العميل</th>
                         <th>السفينة</th>
                         <th>${currentInvoiceType === INVOICE_TYPES.POSTPONED ? 'IB ID / OB ID' : 'رقم البوليصة'}</th>
@@ -4106,28 +4197,31 @@ function renderTableView(data) {
         const isSelected = selectedInvoices.has(idx) ? 'checked' : '';
         const selectedClass = isSelected ? 'selected-row' : '';
         
-        // مفتاح فريد للفاتورة (لحالة المعاينة)
-		const viewKey = getInvoiceKey(inv);
+        const viewKey = getInvoiceKey(inv);
         const isViewed = viewedInvoices.has(viewKey) ? 'checked' : '';
+        
+        const invoiceDateRaw = inv['finalized-date'] || inv['created'] || '';
+        const invoiceDate = invoiceDateRaw ? new Date(invoiceDateRaw).toLocaleDateString('ar-EG') : '-';
         
         html += `<tr onclick="window.handleRowClick(${idx}, event)" class="${selectedClass}" data-index="${idx}" data-key="${viewKey}">
             <td onclick="event.stopPropagation()"><input type="checkbox" class="invoice-checkbox" data-index="${idx}" ${isSelected} onchange="updateSelectedInvoices(${idx}, this.checked)"></td>
             <td class="viewed-cell" onclick="event.stopPropagation()">
                 <input type="checkbox" class="viewed-checkbox" data-key="${viewKey}" ${isViewed} 
                        onchange="toggleInvoiceViewed('${viewKey}', this.checked, '${finalNum}', '${draftNum}')">
-            </td>
-            <td>${inv['final-number'] || '-'} (${invoiceTypeDisplay})</td>
-            <td>${inv['draft-number'] || '-'}</td>
-            <td>${(inv['payee-customer-id'] || '-').substring(0,20)}</td>
-            <td>${inv['key-word1'] || '-'}</td>
-            <td>${inv['key-word2'] || '-'}</td>
-            <td>${inv['flex-date-02'] ? new Date(inv['flex-date-02']).toLocaleDateString('ar-EG') : '-'}</td>
-            <td>${formatNumberWithCommas(totalOriginal.toFixed(2))}</td>
-            <td>${formatNumberWithCommas(displayAmount)} ${displayCurrency}</td>
+            <\/td>
+            <td>${inv['final-number'] || '-'} (${invoiceTypeDisplay})<\/td>
+            <td>${inv['draft-number'] || '-'}<\/td>
+            <td>${invoiceDate}<\/td>   <!-- ✅ تم النقل إلى هنا -->
+            <td>${(inv['payee-customer-id'] || '-').substring(0,20)}<\/td>
+            <td>${inv['key-word1'] || '-'}<\/td>
+            <td>${inv['key-word2'] || '-'}<\/td>
+            <td>${inv['flex-date-02'] ? new Date(inv['flex-date-02']).toLocaleDateString('ar-EG') : '-'}<\/td>
+            <td>${formatNumberWithCommas(totalOriginal.toFixed(2))}<\/td>
+            <td>${formatNumberWithCommas(displayAmount)} ${displayCurrency}<\/td>
         </tr>`;
     });
     
-    html += '</tbody></table></div>';
+    html += '</tbody><table></div>';
     document.getElementById('dataViewContainer').innerHTML = html;
     updateSelectedCount();
 }
@@ -6874,82 +6968,155 @@ async function exportDirectPDF() {
     await exportReportAsProfessionalPDF(reportHtmlWithoutSummary, 'تقرير_فواتير');
 }
 
+// ============================================
+// نظام التحديث التلقائي (Auto Refresh)
+// ============================================
 
-async function markOldInvoices() {
-    // التحقق من وجود فواتير
-    if (!invoicesData.length) {
-        showNotification('لا توجد فواتير للتحميل', 'warning');
-        return;
-    }
-    
-    // طلب التاريخ من المستخدم
-    const dateInput = prompt('أدخل التاريخ (بالصيغة YYYY-MM-DD) لتعيين الفواتير الأقدم من هذا التاريخ كمُعالجة:\nمثال: 2025-01-01\n\nاتركه فارغاً لتعيين جميع فواتيرك');
-    
-    let cutoffDate = null;
-    if (dateInput && dateInput.trim() !== '') {
-        cutoffDate = new Date(dateInput);
-        if (isNaN(cutoffDate)) {
-            showNotification('التاريخ غير صحيح. استخدم الصيغة YYYY-MM-DD', 'error');
-            return;
-        }
-    }
-    
-    // الحصول على الفواتير التي تخص المستخدم الحالي فقط
-    const userInvoices = invoicesData.filter(inv => checkIfInvoiceBelongsToUser(inv));
-    
-    if (userInvoices.length === 0) {
-        showNotification('لا توجد فواتير تخص هذا المستخدم', 'warning');
-        return;
-    }
-    
-    let markedCount = 0;
-    let skippedCount = 0;
-    
-    for (const inv of userInvoices) {
-        const viewKey = getInvoiceKey(inv);
-        
-        // إذا كانت الفاتورة محددة بالفعل، تخطيها
-        if (viewedInvoices.has(viewKey)) {
-            skippedCount++;
-            continue;
-        }
-        
-        // التحقق من التاريخ إذا تم تحديد تاريخ
-        if (cutoffDate) {
-            const invoiceDateStr = inv['finalized-date'] || inv['created'] || '';
-            if (!invoiceDateStr) continue;
-            const invoiceDate = new Date(invoiceDateStr);
-            if (isNaN(invoiceDate)) continue;
-            if (invoiceDate >= cutoffDate) continue; // فقط الفواتير الأقدم من التاريخ المحدد
-        }
-        
-        // إضافة الفاتورة إلى قائمة المعاينة
-        viewedInvoices.add(viewKey);
-        markedCount++;
-    }
-    
-    if (markedCount === 0) {
-        showNotification(`لا توجد فواتير جديدة لتحديدها (تم تخطي ${skippedCount} فاتورة محددة مسبقاً)`, 'info');
-        return;
-    }
-    
-    // حفظ التغييرات (نفس آلية الـ checkbox الفردي)
-    saveViewedInvoices(); // حفظ محلياً أولاً
-    
-    // إذا كان المستخدم لديه access_token (مدير أو أي مستخدم سجل دخوله بحساب Google)، نحفظ على Drive أيضاً
-    if (driveAccessToken) {
-        showProgress('جاري حفظ العلامات على Drive...', 50);
-        const saved = await saveViewedToDrive();
-        if (saved) {
-            showNotification(`✅ تم تحديد ${markedCount} فاتورة قديمة وحفظها على Drive (تخطي ${skippedCount})`, 'success');
-        } else {
-            showNotification(`⚠️ تم تحديد ${markedCount} فاتورة ولكن فشل الحفظ على Drive (تم الحفظ محلياً فقط)`, 'warning');
-        }
-        hideProgress();
+// ========== دوال التحديث التلقائي (النسخة النهائية الموحدة) ==========
+let refreshIntervalId = null;
+let currentRefreshEnabled = false;
+let currentRefreshMinutes = 30;
+
+// تحديث واجهة الحالة داخل النافذة
+function updateRefreshStatusDisplay() {
+    const statusDiv = document.getElementById('refreshStatus');
+    if (!statusDiv) return;
+    if (currentRefreshEnabled && currentRefreshMinutes >= 30) {
+        statusDiv.innerHTML = `<i class="fas fa-check-circle"></i> ✅ مفعل - التحديث كل ${currentRefreshMinutes} دقيقة`;
+        statusDiv.style.background = '#d4edda';
+        statusDiv.style.color = '#155724';
     } else {
-        showNotification(`✅ تم تحديد ${markedCount} فاتورة قديمة وحفظها محلياً (تخطي ${skippedCount})`, 'success');
+        statusDiv.innerHTML = `<i class="fas fa-ban"></i> ❌ غير مفعل`;
+        statusDiv.style.background = '#f8d7da';
+        statusDiv.style.color = '#721c24';
     }
-    
-    // تحديث واجهة الجدول
-    renderData();
 }
+
+// إيقاف المؤقت
+function stopRefreshTimer() {
+    if (refreshIntervalId) {
+        clearInterval(refreshIntervalId);
+        refreshIntervalId = null;
+    }
+    currentRefreshEnabled = false;
+    updateRefreshStatusDisplay();
+    console.log('تم إيقاف التحديث التلقائي');
+}
+
+// بدء المؤقت
+function startRefreshTimer(minutes) {
+    if (refreshIntervalId) stopRefreshTimer(); // إيقاف القديم
+    if (!minutes || minutes < 30) {
+        currentRefreshEnabled = false;
+        updateRefreshStatusDisplay();
+        return;
+    }
+    currentRefreshEnabled = true;
+    currentRefreshMinutes = minutes;
+    refreshIntervalId = setInterval(async () => {
+        console.log(`تحديث تلقائي بعد ${minutes} دقيقة`);
+        if (currentUser) {
+            await loadInvoicesFromDrive();
+            if (currentUser.isGuest) {
+                filterInvoicesByGuest(currentUser.taxNumber, currentUser.blNumber);
+            } else {
+                filterInvoicesByUser();
+            }
+            renderData();
+            showNotification('تم تحديث البيانات تلقائياً', 'success');
+        }
+    }, minutes * 60 * 1000);
+    updateRefreshStatusDisplay();
+    console.log(`تم تفعيل التحديث التلقائي كل ${minutes} دقيقة`);
+}
+
+// حفظ الإعدادات من النافذة
+window.saveRefreshSettings = function() {
+    const enabledSelect = document.getElementById('refreshEnabled');
+    const intervalInput = document.getElementById('refreshInterval');
+    if (!enabledSelect || !intervalInput) {
+        showNotification('حدث خطأ في النافذة', 'error');
+        return;
+    }
+    const enabled = enabledSelect.value === 'true';
+    let minutes = parseInt(intervalInput.value);
+    if (isNaN(minutes)) minutes = 30;
+    if (enabled && minutes < 30) {
+        showNotification('⚠️ الحد الأدنى 30 دقيقة', 'warning');
+        return;
+    }
+    if (enabled && minutes > 1440) minutes = 1440;
+    
+    // حفظ في localStorage
+    localStorage.setItem('refresh_enabled', enabled ? 'true' : 'false');
+    if (enabled) {
+        localStorage.setItem('refresh_minutes', minutes);
+        startRefreshTimer(minutes);
+    } else {
+        localStorage.removeItem('refresh_minutes');
+        stopRefreshTimer();
+    }
+    // تحديث واجهة النافذة
+    updateRefreshSettingsForm();
+    closeRefreshSettingsModal();
+    showNotification(enabled ? `✅ تم تفعيل التحديث كل ${minutes} دقيقة` : '⏸️ تم إيقاف التحديث التلقائي', 'success');
+};
+
+// تحميل الإعدادات من localStorage وتطبيقها
+function loadRefreshSettings() {
+    const enabled = localStorage.getItem('refresh_enabled') === 'true';
+    const minutes = parseInt(localStorage.getItem('refresh_minutes') || '30');
+    if (enabled && minutes >= 30) {
+        startRefreshTimer(minutes);
+    } else {
+        stopRefreshTimer();
+    }
+    updateRefreshSettingsForm();
+}
+
+// تحديث حقول النافذة بناءً على المتغيرات الحالية (وليس localStorage)
+function updateRefreshSettingsForm() {
+    const enabledSelect = document.getElementById('refreshEnabled');
+    const intervalInput = document.getElementById('refreshInterval');
+    if (!enabledSelect || !intervalInput) return;
+    // استخدم currentRefreshEnabled و currentRefreshMinutes بدلاً من localStorage
+    enabledSelect.value = currentRefreshEnabled ? 'true' : 'false';
+    intervalInput.value = currentRefreshMinutes;
+    updateRefreshStatusDisplay();
+}
+
+// فتح النافذة
+window.openRefreshSettings = function() {
+    if (!currentUser) {
+        showNotification('يرجى تسجيل الدخول أولاً', 'warning');
+        return;
+    }
+    updateRefreshSettingsForm(); // تعرض القيم الحالية
+    const modal = document.getElementById('refreshSettingsModal');
+    if (modal) modal.style.display = 'block';
+};
+
+// إغلاق النافذة
+window.closeRefreshSettingsModal = function() {
+    const modal = document.getElementById('refreshSettingsModal');
+    if (modal) modal.style.display = 'none';
+};
+
+// تحديث يدوي فوري
+window.manualRefresh = async function() {
+    if (!currentUser) return;
+    showNotification('🔄 جاري التحديث اليدوي...', 'info');
+    await loadInvoicesFromDrive();
+    if (currentUser.isGuest) {
+        filterInvoicesByGuest(currentUser.taxNumber, currentUser.blNumber);
+    } else {
+        filterInvoicesByUser();
+    }
+    renderData();
+    showNotification('✅ تم التحديث اليدوي بنجاح', 'success');
+};
+
+// عند تحميل الصفحة
+document.addEventListener('DOMContentLoaded', () => {
+    loadRefreshSettings();
+});
