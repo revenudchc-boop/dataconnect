@@ -3149,105 +3149,142 @@ async function exportSingleInvoice() {
     const invoiceNumber = inv['final-number'] || 'فاتورة';
     
     const loading = document.createElement('div');
-    loading.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#4361ee;color:white;padding:15px 30px;border-radius:8px;z-index:10000;';
+    loading.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#4361ee;color:white;padding:15px 30px;border-radius:8px;z-index:100000000;';
     loading.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري إنشاء PDF...';
     document.body.appendChild(loading);
     
     try {
-        // تجهيز الفاتورة للتصوير
         const originalHeight = element.style.height;
         const originalOverflow = element.style.overflow;
         element.style.height = 'auto';
         element.style.overflow = 'visible';
         
-        // التقاط صورة كاملة بدقة عالية
-        const canvas = await html2canvas(element, {
-            scale: 2.8,          // دقة أعلى
-            backgroundColor: '#ffffff',
-            logging: false,
-            useCORS: true,
-            windowWidth: element.scrollWidth,
-            windowHeight: element.scrollHeight
-        });
-        
-        // استعادة الخصائص
-        element.style.height = originalHeight;
-        element.style.overflow = originalOverflow;
+        const totalHeight = element.scrollHeight;
+        const totalWidth = element.scrollWidth;
         
         const { jsPDF } = window.jspdf;
         const pdf = new jsPDF({
-            orientation: 'portrait',
+            orientation: totalWidth > totalHeight ? 'landscape' : 'portrait',
             unit: 'mm',
             format: 'a4',
             compress: true
         });
         
-        // الهوامش (ملم)
-        const marginTop = 12;
-        const marginBottom = 12;
-        const marginLeft = 8;
-        const marginRight = 8;
+        // ✅ الهوامش (ملم)
+        const margin = {
+            top: 15,
+            bottom: 15,
+            left: 8,
+            right: 8
+        };
         
-        const pdfWidth = pdf.internal.pageSize.getWidth();   // 210 مم
-        const pdfHeight = pdf.internal.pageSize.getHeight(); // 297 مم
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = pdf.internal.pageSize.getHeight();
+        const contentWidth = pdfWidth - margin.left - margin.right;
+        const contentHeight = pdfHeight - margin.top - margin.bottom;
         
-        const contentWidth = pdfWidth - marginLeft - marginRight;
-        const availableHeight = pdfHeight - marginTop - marginBottom;
+        // ✅ جودة عالية للنصوص (scale 2.5 - ممتاز)
+        const scale = contentWidth / totalWidth;
+        const canvasScale = 2.5;  // جودة عالية جداً
+        const jpegQuality = 0.92; // جودة عالية
         
-        const imgWidth = canvas.width;
-        const imgHeight = canvas.height;
-        const scaleX = contentWidth / imgWidth;
-        const totalImgHeightMM = imgHeight * scaleX;
+        // حساب عدد الصفحات
+        const scaledTotalHeight = totalHeight * scale;
+        let pagesCount = Math.ceil(scaledTotalHeight / contentHeight);
         
-        // تداخل بين الصفحات (بالبكسل) - لمنع قطع النصوص
-        const overlapPx = 25;  // 25 بكسل تداخل (حوالي 5-6 ملم)
-        const overlapMM = overlapPx * scaleX;
+        if (pagesCount > 50) {
+            pagesCount = 50;
+            showNotification('⚠️ الفاتورة كبيرة جداً، سيتم تصدير أول 50 صفحة فقط', 'warning');
+        }
         
-        // حساب عدد الصفحات مع مراعاة التداخل
-        let pages = Math.ceil((totalImgHeightMM - overlapMM) / (availableHeight - overlapMM));
-        if (pages < 1) pages = 1;
+        showProgress(`جاري إنشاء ${pagesCount} صفحة...`, 5);
         
-        showProgress(`جاري إنشاء ${pages} صفحة...`, 10);
-        
-        for (let i = 0; i < pages; i++) {
-            if (i > 0) pdf.addPage();
+        for (let page = 0; page < pagesCount; page++) {
+            if (page > 0) pdf.addPage();
             
-            // حساب بداية ونهاية الشريحة بالبكسل مع التداخل
-            let startY_px = i * (availableHeight / scaleX);
-            if (i > 0) startY_px -= overlapPx; // تراجع للخلف قليلاً لتجنب القطع
+            const progressPercent = Math.round(((page + 1) / pagesCount) * 100);
+            showProgress(`جاري معالجة الصفحة ${page + 1} من ${pagesCount}...`, progressPercent);
             
-            // التأكد من عدم تجاوز الحدود
-            startY_px = Math.max(0, startY_px);
-            let endY_px = startY_px + (availableHeight / scaleX) + overlapPx;
-            endY_px = Math.min(imgHeight, endY_px);
+            // حساب المنطقة المراد تصويرها
+            const startY = page * (contentHeight / scale);
+            const sliceHeight = (contentHeight / scale) + 20; // تداخل 20px
             
-            const sliceHeight_px = endY_px - startY_px;
-            if (sliceHeight_px <= 0) continue;
+            // ✅ إنشاء عنصر مؤقت للصفحة الحالية
+            const tempDiv = document.createElement('div');
+            tempDiv.style.cssText = `
+                position: absolute;
+                left: -9999px;
+                top: -9999px;
+                width: ${totalWidth}px;
+                background: white;
+                direction: rtl;
+                overflow: visible;
+                padding: 0;
+                margin: 0;
+            `;
             
-            // إنشاء Canvas للشريحة
-            const sliceCanvas = document.createElement('canvas');
-            sliceCanvas.width = imgWidth;
-            sliceCanvas.height = sliceHeight_px;
-            const ctx = sliceCanvas.getContext('2d');
-            ctx.drawImage(canvas, 0, startY_px, imgWidth, sliceHeight_px, 0, 0, imgWidth, sliceHeight_px);
+            // استنساخ الفاتورة
+            const cloneInvoice = element.cloneNode(true);
+            cloneInvoice.style.transform = `translateY(-${startY}px)`;
+            cloneInvoice.style.height = `${totalHeight}px`;
+            cloneInvoice.style.overflow = 'visible';
+            cloneInvoice.style.margin = '0';
+            cloneInvoice.style.padding = '0';
             
-            const sliceImgData = sliceCanvas.toDataURL('image/jpeg', 0.9);
-            const sliceHeightMM = sliceHeight_px * scaleX;
+            tempDiv.appendChild(cloneInvoice);
+            document.body.appendChild(tempDiv);
             
-            pdf.addImage(sliceImgData, 'JPEG', marginLeft, marginTop, contentWidth, sliceHeightMM);
+            // انتظار قصير للتأكد من التحميل
+            await new Promise(resolve => setTimeout(resolve, 100));
             
-            showProgress(`الصفحة ${i+1} من ${pages}`, Math.round(((i+1)/pages)*100));
+            // التقاط الصورة
+            const canvas = await html2canvas(tempDiv, {
+                scale: canvasScale,
+                backgroundColor: '#ffffff',
+                logging: false,
+                useCORS: true,
+                allowTaint: false,
+                windowWidth: totalWidth,
+                windowHeight: sliceHeight + 50
+            });
+            
+            // قص الصورة لإزالة المناطق الفارغة
+            const expectedHeight = sliceHeight * canvasScale;
+            const cropHeight = Math.min(canvas.height, expectedHeight);
+            
+            const cropCanvas = document.createElement('canvas');
+            cropCanvas.width = canvas.width;
+            cropCanvas.height = cropHeight;
+            const ctx = cropCanvas.getContext('2d');
+            ctx.drawImage(canvas, 0, 0, canvas.width, cropHeight, 0, 0, canvas.width, cropHeight);
+            
+            const imgData = cropCanvas.toDataURL('image/jpeg', jpegQuality);
+            const imgHeightMM = (cropCanvas.height * contentWidth) / cropCanvas.width;
+            
+            // إضافة الصورة إلى PDF
+            pdf.addImage(imgData, 'JPEG', margin.left, margin.top, contentWidth, imgHeightMM);
+            
+            // تنظيف الذاكرة
+            document.body.removeChild(tempDiv);
+            cropCanvas.width = 0;
+            cropCanvas.height = 0;
+            canvas.width = 0;
+            canvas.height = 0;
         }
         
         pdf.save(`فاتورة-${invoiceNumber}.pdf`);
-        showNotification(`تم التصدير (${pages} صفحات) بنجاح`, 'success');
+        showNotification(`تم التصدير (${pagesCount} صفحات) بنجاح`, 'success');
         
     } catch (error) {
-        console.error(error);
-        showNotification('حدث خطأ: ' + error.message, 'error');
+        console.error('خطأ في إنشاء PDF:', error);
+        showNotification('حدث خطأ في إنشاء PDF: ' + error.message, 'error');
     } finally {
         loading.remove();
         hideProgress();
+        if (element) {
+            element.style.height = '';
+            element.style.overflow = '';
+        }
     }
 }
 
