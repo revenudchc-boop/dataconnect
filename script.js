@@ -853,8 +853,11 @@ async function exportSelectedReport() {
 function showReportPreview(reportHtmlWithSummary, reportHtmlWithoutSummary) {
     // إزالة أي نافذة معاينة سابقة
     const existingModal = document.getElementById('reportPreviewModal');
-    if (existingModal) existingModal.remove();
+    if (existingModal) {
+        existingModal.remove();
+    }
 
+    // إنشاء النافذة المنبثقة الرئيسية
     const modal = document.createElement('div');
     modal.id = 'reportPreviewModal';
     modal.style.cssText = `
@@ -871,7 +874,9 @@ function showReportPreview(reportHtmlWithSummary, reportHtmlWithoutSummary) {
         direction: rtl;
     `;
     
+    // إنشاء محتوى النافذة الداخلي
     const modalContent = document.createElement('div');
+    modalContent.id = 'reportPreviewModalContent';
     modalContent.style.cssText = `
         background: white;
         width: 90%;
@@ -882,8 +887,10 @@ function showReportPreview(reportHtmlWithSummary, reportHtmlWithoutSummary) {
         flex-direction: column;
         overflow: hidden;
         box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        position: relative;
     `;
     
+    // إنشاء رأس النافذة
     const modalHeader = document.createElement('div');
     modalHeader.style.cssText = `
         display: flex;
@@ -903,6 +910,7 @@ function showReportPreview(reportHtmlWithSummary, reportHtmlWithoutSummary) {
         </div>
     `;
     
+    // إضافة الأنماط للأزرار
     const style = document.createElement('style');
     style.textContent = `
         .btn-preview {
@@ -933,19 +941,95 @@ function showReportPreview(reportHtmlWithSummary, reportHtmlWithoutSummary) {
     `;
     modalContent.appendChild(style);
     
+    // إنشاء منطقة عرض التقرير
     const contentArea = document.createElement('div');
     contentArea.className = 'report-content';
     contentArea.innerHTML = reportHtmlWithSummary;
     
+    // تجميع النافذة
     modalContent.appendChild(modalHeader);
     modalContent.appendChild(contentArea);
     modal.appendChild(modalContent);
     document.body.appendChild(modal);
     
+    // إضافة شريط تقدم مخصص داخل النافذة (وليس في body)
+    let progressContainer = null;
+    let progressMessage = null;
+    
+    function showProgressInsideModal(message, percentage) {
+        if (!progressContainer) {
+            progressContainer = document.createElement('div');
+            progressContainer.id = 'modalProgressContainer';
+            progressContainer.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 4px;
+                background: #e0e0e0;
+                z-index: 1000;
+                display: none;
+            `;
+            
+            const progressBar = document.createElement('div');
+            progressBar.id = 'modalProgressBar';
+            progressBar.style.cssText = `
+                height: 100%;
+                background: linear-gradient(90deg, #0F9D58, #0B7D44);
+                width: 0%;
+                transition: width 0.3s ease;
+            `;
+            progressContainer.appendChild(progressBar);
+            
+            progressMessage = document.createElement('div');
+            progressMessage.id = 'modalProgressMessage';
+            progressMessage.style.cssText = `
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: rgba(0,0,0,0.85);
+                color: white;
+                padding: 15px 30px;
+                border-radius: 50px;
+                z-index: 1001;
+                display: none;
+                font-size: 1em;
+                white-space: nowrap;
+                box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+            `;
+            
+            modalContent.appendChild(progressContainer);
+            modalContent.appendChild(progressMessage);
+        }
+        
+        progressContainer.style.display = 'block';
+        progressMessage.style.display = 'block';
+        progressContainer.querySelector('#modalProgressBar').style.width = percentage + '%';
+        progressMessage.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${message}`;
+        
+        if (percentage >= 100) {
+            setTimeout(() => {
+                if (progressContainer) progressContainer.style.display = 'none';
+                if (progressMessage) progressMessage.style.display = 'none';
+            }, 1500);
+        }
+    }
+    
+    function hideProgressInsideModal() {
+        if (progressContainer) progressContainer.style.display = 'none';
+        if (progressMessage) progressMessage.style.display = 'none';
+    }
+    
     // إغلاق النافذة
-    document.getElementById('closePreviewBtn').onclick = () => modal.remove();
+    document.getElementById('closePreviewBtn').onclick = () => {
+        modal.remove();
+    };
+    
     modal.addEventListener('click', (e) => {
-        if (e.target === modal) modal.remove();
+        if (e.target === modal) {
+            modal.remove();
+        }
     });
     
     // طباعة
@@ -964,11 +1048,7 @@ function showReportPreview(reportHtmlWithSummary, reportHtmlWithoutSummary) {
             return;
         }
         
-        // إخفاء نافذة المعاينة مؤقتاً
-        const modalEl = document.getElementById('reportPreviewModal');
-        if (modalEl) modalEl.style.visibility = 'hidden';
-        
-        showProgress('جاري إنشاء التقرير...', 10);
+        showProgressInsideModal('جاري إنشاء التقرير...', 10);
         
         try {
             const pages = splitReportIntoPages(reportHtmlWithoutSummary, 15);
@@ -1022,7 +1102,7 @@ function showReportPreview(reportHtmlWithSummary, reportHtmlWithoutSummary) {
                 
                 document.body.removeChild(tempDiv);
                 
-                showProgress(`جاري إنشاء الصفحة ${idx + 1} من ${pages.length}...`, Math.round(((idx + 1) / pages.length) * 100));
+                showProgressInsideModal(`جاري إنشاء الصفحة ${idx + 1} من ${pages.length}...`, Math.round(((idx + 1) / pages.length) * 100));
             }
             
             const fileName = `تقرير_فواتير_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.pdf`;
@@ -1033,8 +1113,7 @@ function showReportPreview(reportHtmlWithSummary, reportHtmlWithoutSummary) {
             console.error(err);
             showNotification('حدث خطأ في تصدير PDF', 'error');
         } finally {
-            hideProgress();
-            if (modalEl) modalEl.style.visibility = 'visible';
+            hideProgressInsideModal();
         }
     };
 }
@@ -1074,7 +1153,7 @@ async function loadLogoFromDrive() {
 // ============================================
 // دوال شريط التقدم
 // ============================================
-function showProgress(message, percentage) {
+function showProgress(message, percentage, parentElement = null) {
     let container = document.getElementById('progressBarContainer');
     let bar = document.getElementById('progressBar');
     let msg = document.getElementById('progressMessage');
@@ -1083,20 +1162,27 @@ function showProgress(message, percentage) {
         container = document.createElement('div');
         container.id = 'progressBarContainer';
         container.className = 'progress-bar-container';
-        container.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 4px; background: #e0e0e0; z-index: 1000000; display: none;';
+        container.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: #e0e0e0; z-index: 100; display: none;';
         
         bar = document.createElement('div');
         bar.id = 'progressBar';
         bar.className = 'progress-bar';
         bar.style.cssText = 'height: 100%; background: linear-gradient(90deg, #0F9D58, #0B7D44); width: 0%; transition: width 0.3s ease;';
         container.appendChild(bar);
-        document.body.appendChild(container);
 
         msg = document.createElement('div');
         msg.id = 'progressMessage';
         msg.className = 'progress-message';
-        msg.style.cssText = 'position: fixed; top: 10px; left: 50%; transform: translateX(-50%); background: white; padding: 10px 20px; border-radius: 50px; box-shadow: 0 5px 20px rgba(0,0,0,0.2); z-index: 1000001; display: none; font-size: 0.95em;';
-        document.body.appendChild(msg);
+        msg.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 15px 30px; border-radius: 50px; box-shadow: 0 5px 20px rgba(0,0,0,0.3); z-index: 101; display: none; font-size: 1em; white-space: nowrap;';
+        
+        // نضيف العناصر إلى parentElement المحدد
+        if (parentElement) {
+            parentElement.appendChild(container);
+            parentElement.appendChild(msg);
+        } else {
+            document.body.appendChild(container);
+            document.body.appendChild(msg);
+        }
     }
 
     container.style.display = 'block';
@@ -1115,7 +1201,12 @@ function showProgress(message, percentage) {
 function hideProgress() {
     const container = document.getElementById('progressBarContainer');
     const msg = document.getElementById('progressMessage');
-    if (container) container.style.display = 'none';
+    if (container) {
+        container.style.display = 'none';
+        // اختيارياً: إزالة العناصر بالكامل بعد الإخفاء
+        // container.remove();
+        // msg.remove();
+    }
     if (msg) msg.style.display = 'none';
 }
 
@@ -1648,7 +1739,7 @@ function showNotification(message, type) {
         position: 'fixed', top: '20px', left: '50%', transform: 'translateX(-50%)',
         background: type === 'success' ? '#10b981' : type === 'info' ? '#3b82f6' : '#ef4444',
         color: 'white', padding: '12px 24px', borderRadius: '50px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-        zIndex: '10000', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.95em'
+        zIndex: '100000000', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.95em'
     });
     notif.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : type === 'info' ? 'info-circle' : 'exclamation-circle'}"></i><span>${message}</span>`;
     document.body.appendChild(notif);
