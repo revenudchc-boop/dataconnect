@@ -1352,34 +1352,74 @@ async function saveUsersToDrive() {
     } finally { setTimeout(hideProgress, 1500); }
 }
 
-function loadUsersFromBackup() {
-    const backup = localStorage.getItem('backupUsers');
-    if (backup) try { users = JSON.parse(backup); return true; } catch { return false; }
-    return false;
-}
-
-function loadDefaultUsers() {
-    users = [
-        { id: 'user_admin', username: 'admin', email: 'admin@dchc-egdam.com', taxNumber: 'ADMIN001', contractCustomerId: 'ADMIN001', customerIds: [], userType: 'admin', password: 'admin123', status: 'active', createdAt: new Date().toISOString(), lastLogin: null },
-        { id: 'user_accountant', username: 'accountant', email: 'accountant@dchc-egdam.com', taxNumber: 'ACC001', contractCustomerId: 'ACC001', customerIds: [], userType: 'accountant', password: 'acc123', status: 'active', createdAt: new Date().toISOString(), lastLogin: null },
-        { id: 'msc', username: 'msc', email: 'customer@example.com', taxNumber: '202487288', contractCustomerId: 'MSC', customerIds: ['MSC', '202487288'], userType: 'customer', password: 'msc123', status: 'active', createdAt: new Date().toISOString(), lastLogin: null },
-        { id: 'one', username: 'one', email: 'accountant@dchc-egdam.com', taxNumber: '374380139', contractCustomerId: 'ONE', customerIds: ['ONE', '374380139'], userType: 'accountant', password: 'one123', status: 'active', createdAt: new Date().toISOString(), lastLogin: null },
-        { id: 'zim', username: 'zim', email: 'zim@gmail.com', taxNumber: '123456789', contractCustomerId: 'zim', customerIds: ['zim', '123456789'], userType: 'customer', password: 'zim123', status: 'active', createdAt: new Date().toISOString(), lastLogin: null }
-    ];
-    showNotification('تم استخدام المستخدمين الافتراضيين', 'warning');
-}
-
-async function loadUsers(forceRefresh = false) {
-    if (forceRefresh) {
-        if (await loadUsersFromDrive()) showNotification('تم تحديث المستخدمين', 'success');
-        else if (!loadUsersFromBackup()) loadDefaultUsers();
-    } else {
-        if (!await loadUsersFromDrive()) {
-            if (!loadUsersFromBackup()) loadDefaultUsers();
-        }
+// دالة مساعدة لفك تشفير Base64 (للاستخدام في حالة الطوارئ فقط)
+function decodeBase64(encoded) {
+    try {
+        return atob(encoded);
+    } catch(e) {
+        return encoded;
     }
 }
 
+// تحميل النسخة الاحتياطية من localStorage
+function loadUsersFromBackup() {
+    const backup = localStorage.getItem('backupUsers');
+    if (backup) {
+        try { 
+            users = JSON.parse(backup); 
+            return true; 
+        } catch { 
+            return false; 
+        }
+    }
+    return false;
+}
+
+// (ملغاة) لم نعد نستخدم مستخدمين افتراضيين متعددين
+// function loadDefaultUsers() { ... }  // تم حذفها نهائياً
+
+// تحميل المستخدمين (الاعتماد الأساسي على Drive)
+async function loadUsers(forceRefresh = false) {
+    // محاولة التحميل من Drive أولاً
+    let loaded = false;
+    if (forceRefresh) {
+        loaded = await loadUsersFromDrive();
+    } else {
+        loaded = await loadUsersFromDrive();
+    }
+    
+    if (loaded) {
+        // نجح التحميل من Drive
+        if (forceRefresh) showNotification('تم تحديث المستخدمين', 'success');
+        return;
+    }
+    
+    // فشل التحميل من Drive → نحاول من النسخة الاحتياطية المحلية
+    if (loadUsersFromBackup()) {
+        console.warn('⚠️ تم تحميل المستخدمين من النسخة الاحتياطية المحلية');
+        showNotification('تم تحميل المستخدمين من النسخة الاحتياطية', 'warning');
+        return;
+    }
+    
+    // في حالة عدم وجود أي بيانات (لا Drive ولا نسخة احتياطية)، نضيف مديراً احتياطياً واحداً فقط
+    console.error('❌ فشل تحميل المستخدمين من Drive والنسخة الاحتياطية. سيتم إنشاء مدير احتياطي.');
+    users = [{
+        id: 'user_admin_emergency',
+        username: 'admin',
+        email: 'admin@emergency.local',
+        taxNumber: decodeBase64('QURNSU4wMDE='),      // ADMIN001
+        contractCustomerId: decodeBase64('QURNSU4wMDE='),
+        customerIds: [],
+        userType: 'admin',
+        password: decodeBase64('YWRtaW4xMjM='),       
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        lastLogin: null
+    }];
+    showNotification('تم إنشاء مدير احتياطي (admin/admin123) بسبب فشل تحميل المستخدمين', 'warning');
+}
+
+// تحديث المستخدمين يدوياً من Drive (للمدير فقط)
 window.refreshUsersFromDrive = async function() {
     if (!currentUser || currentUser.userType !== 'admin') {
         showNotification('غير مصرح لك بتحديث المستخدمين', 'error');
@@ -1390,8 +1430,13 @@ window.refreshUsersFromDrive = async function() {
         renderUsersTable();
         showNotification('تم تحديث المستخدمين', 'success');
     } else {
-        if (loadUsersFromBackup()) renderUsersTable();
-        else showNotification('فشل التحديث', 'error');
+        // إذا فشل التحديث من Drive، نحاول جلب من النسخة الاحتياطية (إن وجدت)
+        if (loadUsersFromBackup()) {
+            renderUsersTable();
+            showNotification('تم تحميل المستخدمين من النسخة الاحتياطية', 'warning');
+        } else {
+            showNotification('فشل تحديث المستخدمين ولا توجد نسخة احتياطية', 'error');
+        }
     }
 };
 
