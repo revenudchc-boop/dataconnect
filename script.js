@@ -3232,15 +3232,13 @@ async function exportSingleInvoice() {
     document.body.appendChild(loading);
     
     try {
-        // تجهيز الفاتورة للتصوير
         const originalHeight = element.style.height;
         const originalOverflow = element.style.overflow;
         element.style.height = 'auto';
         element.style.overflow = 'visible';
         
-        // التقاط صورة كاملة بدقة عالية
         const canvas = await html2canvas(element, {
-            scale: 2.8,          // دقة أعلى
+            scale: 2.8,
             backgroundColor: '#ffffff',
             logging: false,
             useCORS: true,
@@ -3248,7 +3246,6 @@ async function exportSingleInvoice() {
             windowHeight: element.scrollHeight
         });
         
-        // استعادة الخصائص
         element.style.height = originalHeight;
         element.style.overflow = originalOverflow;
         
@@ -3260,15 +3257,13 @@ async function exportSingleInvoice() {
             compress: true
         });
         
-        // الهوامش (ملم)
-        const marginTop = 12;
-        const marginBottom = 12;
+        const marginTop = 10;
+        const marginBottom = 10;
         const marginLeft = 8;
         const marginRight = 8;
         
-        const pdfWidth = pdf.internal.pageSize.getWidth();   // 210 مم
-        const pdfHeight = pdf.internal.pageSize.getHeight(); // 297 مم
-        
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = pdf.internal.pageSize.getHeight();
         const contentWidth = pdfWidth - marginLeft - marginRight;
         const availableHeight = pdfHeight - marginTop - marginBottom;
         
@@ -3277,48 +3272,71 @@ async function exportSingleInvoice() {
         const scaleX = contentWidth / imgWidth;
         const totalImgHeightMM = imgHeight * scaleX;
         
-        // تداخل بين الصفحات (بالبكسل) - لمنع قطع النصوص
-        const overlapPx = 25;  // 25 بكسل تداخل (حوالي 5-6 ملم)
-        const overlapMM = overlapPx * scaleX;
+        const MAX_SINGLE_PAGE_RATIO = 1.15;
         
-        // حساب عدد الصفحات مع مراعاة التداخل
-        let pages = Math.ceil((totalImgHeightMM - overlapMM) / (availableHeight - overlapMM));
-        if (pages < 1) pages = 1;
-        
-        showProgress(`جاري إنشاء ${pages} صفحة...`, 10);
-        
-        for (let i = 0; i < pages; i++) {
-            if (i > 0) pdf.addPage();
+        // --- صفحة واحدة ---
+        if (totalImgHeightMM <= availableHeight * MAX_SINGLE_PAGE_RATIO) {
+            let finalHeightMM = totalImgHeightMM;
+            if (totalImgHeightMM > availableHeight) {
+                const compressRatio = availableHeight / totalImgHeightMM * 0.98;
+                finalHeightMM = totalImgHeightMM * compressRatio;
+            }
+            const imgData = canvas.toDataURL('image/jpeg', 0.92);
+            pdf.addImage(imgData, 'JPEG', marginLeft, marginTop, contentWidth, finalHeightMM);
+            pdf.save(`فاتورة-${invoiceNumber}.pdf`);
+            showNotification('تم التصدير (صفحة واحدة) بنجاح', 'success');
+        } 
+        else {
+            // --- صفحات متعددة بدون تكرار واضح ---
+            showProgress(`جاري إنشاء صفحات متعددة...`, 10);
             
-            // حساب بداية ونهاية الشريحة بالبكسل مع التداخل
-            let startY_px = i * (availableHeight / scaleX);
-            if (i > 0) startY_px -= overlapPx; // تراجع للخلف قليلاً لتجنب القطع
+            // ✅ تداخل صغير جدًا (5 بكسل فقط) لمنع القطع دون تكرار البيانات
+            const overlapPx = 5;   // كان 35 -> أصبح 5 بكسل
+            const overlapMM = overlapPx * scaleX;
             
-            // التأكد من عدم تجاوز الحدود
-            startY_px = Math.max(0, startY_px);
-            let endY_px = startY_px + (availableHeight / scaleX) + overlapPx;
-            endY_px = Math.min(imgHeight, endY_px);
+            // ارتفاع الشريحة الفعلي (بالملم) = ارتفاع الصفحة المتاح + التداخل
+            const sliceHeightMM = availableHeight + overlapMM;
+            const sliceHeightPx = sliceHeightMM / scaleX;
             
-            const sliceHeight_px = endY_px - startY_px;
-            if (sliceHeight_px <= 0) continue;
+            // عدد الصفحات بناءً على المحتوى
+            let pages = Math.ceil(totalImgHeightMM / availableHeight);
+            if (pages < 1) pages = 1;
             
-            // إنشاء Canvas للشريحة
-            const sliceCanvas = document.createElement('canvas');
-            sliceCanvas.width = imgWidth;
-            sliceCanvas.height = sliceHeight_px;
-            const ctx = sliceCanvas.getContext('2d');
-            ctx.drawImage(canvas, 0, startY_px, imgWidth, sliceHeight_px, 0, 0, imgWidth, sliceHeight_px);
+            for (let i = 0; i < pages; i++) {
+                if (i > 0) pdf.addPage();
+                
+                // بداية الشريحة بالبكسل
+                let startY_px = i * (availableHeight / scaleX);
+                if (i > 0) {
+                    // نتراجع قليلاً جداً (فقط 5 بكسل) لتجنب القطع
+                    startY_px = Math.max(0, startY_px - overlapPx);
+                }
+                
+                // نهاية الشريحة = بداية + ارتفاع الشريحة
+                let endY_px = startY_px + sliceHeightPx;
+                endY_px = Math.min(imgHeight, endY_px);
+                
+                const actualSliceHeightPx = endY_px - startY_px;
+                if (actualSliceHeightPx <= 0) continue;
+                
+                // إنشاء canvas جزئي
+                const sliceCanvas = document.createElement('canvas');
+                sliceCanvas.width = imgWidth;
+                sliceCanvas.height = actualSliceHeightPx;
+                const ctx = sliceCanvas.getContext('2d');
+                ctx.drawImage(canvas, 0, startY_px, imgWidth, actualSliceHeightPx, 0, 0, imgWidth, actualSliceHeightPx);
+                
+                const sliceImgData = sliceCanvas.toDataURL('image/jpeg', 0.9);
+                const sliceHeightMM_actual = actualSliceHeightPx * scaleX;
+                
+                pdf.addImage(sliceImgData, 'JPEG', marginLeft, marginTop, contentWidth, sliceHeightMM_actual);
+                
+                showProgress(`الصفحة ${i+1} من ${pages}`, Math.round(((i+1)/pages)*100));
+            }
             
-            const sliceImgData = sliceCanvas.toDataURL('image/jpeg', 0.9);
-            const sliceHeightMM = sliceHeight_px * scaleX;
-            
-            pdf.addImage(sliceImgData, 'JPEG', marginLeft, marginTop, contentWidth, sliceHeightMM);
-            
-            showProgress(`الصفحة ${i+1} من ${pages}`, Math.round(((i+1)/pages)*100));
+            pdf.save(`فاتورة-${invoiceNumber}.pdf`);
+            showNotification(`تم التصدير (${pages} صفحات) بنجاح`, 'success');
         }
-        
-        pdf.save(`فاتورة-${invoiceNumber}.pdf`);
-        showNotification(`تم التصدير (${pages} صفحات) بنجاح`, 'success');
         
     } catch (error) {
         console.error(error);
