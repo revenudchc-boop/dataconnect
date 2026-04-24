@@ -352,11 +352,44 @@ function formatNumberWithCommas(number) {
 const DRIVE_CONFIG = {
     clientId: '835944620738-jcl9dh4j2fjuut18vhvik3605t9k20m9.apps.googleusercontent.com',
     clientSecret: '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',
-   refreshToken: '1//03R8lpZHRni85CgYIARAAGAMSNwF-L9IrOF3fGtkQFkR2pEoXauIphw4zdzJODZpAIGCwvh3ge2KXV06FvJCLhjIfu66QVQqMK8s',
+    refreshToken: '',  // سيتم تعبئته من ملف refreshtoken.txt على Drive
     fileId: '1DuActXaKPadEJ843EUlEAAmU7CBHQAVt'
 };
 
 let driveAccessToken = null;
+
+// تحميل Refresh Token من ملف نصي على Drive
+async function loadRefreshTokenFromDrive() {
+    if (!driveConfig.apiKey || !driveConfig.folderId) return false;
+    const fileName = 'refreshtoken.txt';
+    try {
+        // البحث عن الملف في المجلد
+        const query = encodeURIComponent(`'${driveConfig.folderId}' in parents and name='${fileName}' and trashed=false`);
+        const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&key=${driveConfig.apiKey}&fields=files(id,name)`);
+        if (!res.ok) throw new Error('فشل البحث عن ملف التوكن');
+        const data = await res.json();
+        if (!data.files || data.files.length === 0) {
+            console.error('❌ لم يتم العثور على ملف refreshtoken.txt في المجلد');
+            return false;
+        }
+        const fileId = data.files[0].id;
+        // تحميل محتوى الملف
+        const contentRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${driveConfig.apiKey}`);
+        if (!contentRes.ok) throw new Error('فشل تحميل محتوى ملف التوكن');
+        const token = await contentRes.text();
+        const cleanToken = token.trim();
+        if (!cleanToken) {
+            throw new Error('ملف التوكن فارغ');
+        }
+        // تحديث الثابت العام
+        DRIVE_CONFIG.refreshToken = cleanToken;
+        console.log('✅ تم تحميل Refresh Token من Drive بنجاح');
+        return true;
+    } catch (error) {
+        console.error('❌ خطأ في تحميل Refresh Token:', error);
+        return false;
+    }
+}
 
 // تجديد Access Token باستخدام Refresh Token
 async function refreshAccessToken() {
@@ -6903,6 +6936,10 @@ function loadViewedInvoices() {
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('بدء تشغيل النظام...');
     loadDriveSettings();
+	
+	
+	// ✅ استدعاء تحميل التوكن
+    await loadRefreshTokenFromDrive();
     
     // تحميل الشعار من Drive
     await loadLogoFromDrive();
