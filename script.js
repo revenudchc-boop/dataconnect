@@ -1416,7 +1416,7 @@ async function loadUsers(forceRefresh = false) {
         createdAt: new Date().toISOString(),
         lastLogin: null
     }];
-    showNotification('تم إنشاء مدير احتياطي (admin/admin123) بسبب فشل تحميل المستخدمين', 'warning');
+    showNotification('تم إنشاء مدير احتياطي بسبب فشل تحميل المستخدمين', 'warning');
 }
 
 // تحديث المستخدمين يدوياً من Drive (للمدير فقط)
