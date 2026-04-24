@@ -7163,6 +7163,16 @@ function startRefreshTimer(minutes) {
     console.log(`تم تفعيل التحديث التلقائي كل ${minutes} دقيقة`);
 }
 
+function applyRefreshSetting() {
+    const enabled = localStorage.getItem('refresh_enabled') === 'true';
+    const minutes = parseInt(localStorage.getItem('refresh_minutes') || '30');
+    if (enabled && minutes >= 30) {
+        startRefreshTimer(minutes);
+    } else {
+        stopRefreshTimer();
+    }
+}
+
 // حفظ الإعدادات من النافذة
 window.saveRefreshSettings = function() {
     const enabledSelect = document.getElementById('refreshEnabled');
