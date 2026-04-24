@@ -3332,6 +3332,7 @@ async function exportMultipleInvoices(indices) {
         
         pdf.save(fileName);
         showNotification(`تم تصدير ${indices.length} فاتورة بنجاح`, 'success');
+
         
     } catch (error) {
         console.error('خطأ في التصدير:', error);
@@ -3339,6 +3340,10 @@ async function exportMultipleInvoices(indices) {
     } finally {
         setTimeout(hideProgress, 1500);
     }
+	
+	        // ✅ إغلاق نافذة الفاتورة بعد الانتهاء من التصدير
+        closeModal();
+
 }
 
 window.exportInvoicePDF = function() {
