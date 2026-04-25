@@ -7334,6 +7334,7 @@ async function loadNewsFromDrive() {
         let newsItems = content.split(/\r?\n/).filter(line => line.trim() !== '');
         if (newsItems.length === 0) newsItems = ['مرحباً بك في نظام الفواتير المتقدم'];
         
+        // عرض الأخبار مباشرة دون استدعاء دالة خارجية
         let html = '';
         for (let repeat = 0; repeat < 2; repeat++) {
             newsItems.forEach((item, idx) => {
@@ -7359,18 +7360,10 @@ async function loadNewsFromDrive() {
             const speed = Math.max(15, Math.min(40, contentWidth / 50));
             ticker.style.animation = `tickerScroll ${speed}s linear infinite`;
         }
-    } catch (error) {
-        console.error('خطأ في تحميل الأخبار:', error);
-        newsContent.innerHTML = '<div class="news-item">⚠️ تعذر تحميل الأخبار</div>';
-        newsBar.style.display = 'flex';
-    }
-}
-        displayNewsTicker(newsItems);
-        newsBar.style.display = 'flex';
         
     } catch (error) {
         console.error('خطأ في تحميل الأخبار:', error);
-        displayNewsTicker(['تعذر تحميل الأخبار، يرجى المحاولة لاحقاً']);
+        newsContent.innerHTML = '<div class="news-item">⚠️ تعذر تحميل الأخبار</div>';
         newsBar.style.display = 'flex';
     }
 }
