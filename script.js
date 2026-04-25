@@ -7332,7 +7332,6 @@ async function loadNewsFromDrive() {
         return;
     }
 
-    // ✅ الرابط المباشر للملف (تأكد من وجود الملف)
     const newsUrl = 'https://raw.githubusercontent.com/revenudchc-boop/dataconnect/main/news.txt';
 
     try {
@@ -7365,10 +7364,14 @@ async function loadNewsFromDrive() {
         
         const ticker = document.querySelector('.news-ticker');
         if (ticker) {
+            // إزالة الأنيميشن القديمة
             ticker.style.animation = 'none';
+            // إعادة تعيين
             ticker.offsetHeight;
+            // حساب السرعة
             const contentWidth = newsContent.scrollWidth;
             const duration = Math.max(30, Math.min(80, contentWidth / 40));
+            // تعيين الأنيميشن الجديدة
             ticker.style.animation = `tickerScroll ${duration}s linear infinite`;
             console.log(`✅ سرعة الشريط: ${duration} ثانية`);
         }
