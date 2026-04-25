@@ -7327,29 +7327,23 @@ async function loadNewsFromDrive() {
     const newsBar = document.getElementById('newsBar');
     const newsContent = document.getElementById('newsTickerContent');
     
-    if (!newsBar || !newsContent) {
-        console.error('❌ عناصر شريط الأخبار غير موجودة');
-        return;
-    }
+    if (!newsBar || !newsContent) return;
 
     const newsUrl = 'https://raw.githubusercontent.com/revenudchc-boop/dataconnect/main/news.txt';
 
     try {
-        console.log('🔄 جاري تحميل الأخبار...');
+        // ✅ إظهار رسالة "جاري التحميل" فوراً
+        newsContent.innerHTML = '<div class="news-item"><i class="fas fa-spinner fa-spin"></i> جاري تحميل الأخبار...</div>';
+        newsBar.style.display = 'flex';
+        
         const response = await fetch(newsUrl);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-        
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const content = await response.text();
         
         let newsItems = content.split(/\r?\n/).filter(line => line.trim() !== '');
-        if (newsItems.length === 0) {
-            newsItems = ['مرحباً بك في نظام الفواتير المتقدم'];
-        }
+        if (newsItems.length === 0) newsItems = ['مرحباً بك في نظام الفواتير المتقدم'];
         
-        // بناء HTML للأخبار
+        // ✅ بناء HTML للأخبار (مباشرة بدون تأخير)
         let html = '';
         for (let repeat = 0; repeat < 3; repeat++) {
             newsItems.forEach((item, idx) => {
@@ -7358,65 +7352,44 @@ async function loadNewsFromDrive() {
                 else if (item.includes('تحديث')) icon = 'fas fa-sync-alt';
                 else if (item.includes('جديد')) icon = 'fas fa-gift';
                 else if (item.includes('🎉')) icon = 'fas fa-party-horn';
+                else if (item.includes('📢')) icon = 'fas fa-bullhorn';
                 
                 html += `<div class="news-item">
                             <i class="${icon} news-icon"></i>
                             <span>${escapeHtmlNews(item)}</span>
                         </div>`;
-                
-                if (idx < newsItems.length - 1) {
-                    html += `<span class="news-separator">✦</span>`;
-                }
+                if (idx < newsItems.length - 1) html += `<span class="news-separator">✦</span>`;
             });
-            if (repeat < 2) {
-                html += `<span class="news-separator" style="margin:0 25px;">◆ ◆ ◆</span>`;
-            }
+            if (repeat < 2) html += `<span class="news-separator" style="margin:0 25px;">◆ ◆ ◆</span>`;
         }
         
+        // ✅ تحديث المحتوى مباشرة
         newsContent.innerHTML = html;
-        newsBar.style.display = 'flex';
         
-        // ============================================
-        // ضبط السرعة - حل مضمون 100%
-        // ============================================
+        // ✅ إعادة تعيين الحركة فوراً
         const ticker = document.querySelector('.news-ticker');
         if (ticker) {
-            // إزالة أي animation قديمة
             ticker.style.animation = 'none';
+            ticker.style.transform = 'translateY(-50%) translateX(100%)';
             
-            // إعادة تعيين Transform
-            ticker.style.transform = 'translateX(100%)';
+            // ✅ انتظار بسيط لضمان اكتمال DOM
+            await new Promise(resolve => setTimeout(resolve, 50));
             
-            // قياس عرض المحتوى
             const contentWidth = newsContent.scrollWidth;
-            const containerWidth = ticker.parentElement.clientWidth;
+            const calculatedDuration = Math.max(30, (contentWidth / 100) * 0.7);
+            const speedMultiplier = 2.2;  // أبطأ قليلاً
+            const finalDuration = (calculatedDuration * speedMultiplier).toFixed(1);
             
-            // حساب السرعة بناءً على العرض (كلما زاد العرض زادت المدة)
-            // المعادلة: المدة = (العرض / 100) * 0.8 + 40
-            // العرض 2000 بكسل → مدة 56 ثانية تقريباً
-            const calculatedDuration = Math.max(40, (contentWidth / 100) * 0.8);
-            
-            // ⭐⭐ يمكنك مضاعفة السرعة حسب رغبتك ⭐⭐
-            // مثال: ضرب النتيجة في 2 أو 3 لجعلها أبطأ
-            const finalDuration = calculatedDuration * 2.5;  // أبطأ 2.5 مرة
-            
-            console.log(`عرض المحتوى: ${contentWidth}px`);
-            console.log(`السرعة المحسوبة: ${calculatedDuration.toFixed(1)} ثانية`);
-            console.log(`السرعة النهائية: ${finalDuration.toFixed(1)} ثانية`);
-            
-            // تعيين animation
-            ticker.style.transition = 'none';
             ticker.style.animation = `scrollTicker ${finalDuration}s linear infinite`;
-            
-            // إظهار سرعة الحركة للمستخدم
-            showNotification(`سرعة الشريط: ${Math.round(finalDuration)} ثانية`, 'info');
         }
         
+        console.log(`✅ تم تحميل ${newsItems.length} خبر - المدة: ${finalDuration} ثانية`);
+        
     } catch (error) {
-        console.error('❌ خطأ في تحميل الأخبار:', error);
+        console.error('خطأ في تحميل الأخبار:', error);
         const newsContent = document.getElementById('newsTickerContent');
         if (newsContent) {
-            newsContent.innerHTML = '<div class="news-item">⚠️ تعذر تحميل الأخبار</div>';
+            newsContent.innerHTML = '<div class="news-item">⚠️ تعذر تحميل الأخبار، تأكد من الاتصال بالإنترنت</div>';
         }
         const newsBar = document.getElementById('newsBar');
         if (newsBar) newsBar.style.display = 'flex';
