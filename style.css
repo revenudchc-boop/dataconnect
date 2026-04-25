@@ -2169,3 +2169,17 @@ header {
         transform: translateX(-50%);
     }
 }
+
+/* توسيط الأخبار عمودياً - حل سريع */
+.news-ticker-wrapper {
+    display: flex;
+    align-items: center;
+    height: 50px;
+}
+
+.news-ticker {
+    top: auto;
+    transform: none;
+    position: relative;
+    width: 100%;
+}
