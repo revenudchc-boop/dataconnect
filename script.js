@@ -7313,58 +7313,90 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 // ============================================
-// شريط الأخبار المتحرك المتطور (News Ticker)
+// شريط الأخبار - نسخة مبسطة ومضمونة
 // ============================================
 
 async function loadNewsFromDrive() {
     const newsBar = document.getElementById('newsBar');
     const newsContent = document.getElementById('newsTickerContent');
-    if (!newsBar || !newsContent) return;
+    
+    if (!newsBar) {
+        console.error('❌ عنصر newsBar غير موجود في الصفحة');
+        return;
+    }
+    if (!newsContent) {
+        console.error('❌ عنصر newsTickerContent غير موجود');
+        return;
+    }
 
+    // الرابط المباشر للملف على GitHub
     const newsUrl = 'https://raw.githubusercontent.com/revenudchc-boop/dataconnect/main/news.txt';
 
     try {
+        console.log('🔄 جاري تحميل الأخبار من:', newsUrl);
         const response = await fetch(newsUrl);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status} - ${response.statusText}`);
+        }
+        
         const content = await response.text();
+        console.log('✅ تم تحميل المحتوى:', content);
         
+        // تقسيم النص إلى أخبار (كل سطر خبر منفصل)
         let newsItems = content.split(/\r?\n/).filter(line => line.trim() !== '');
-        if (newsItems.length === 0) newsItems = ['مرحباً بك في نظام الفواتير المتقدم'];
+        if (newsItems.length === 0) {
+            newsItems = ['مرحباً بك في نظام الفواتير المتقدم'];
+        }
         
+        // بناء HTML للأخبار
         let html = '';
         for (let repeat = 0; repeat < 2; repeat++) {
             newsItems.forEach((item, idx) => {
+                // اختيار أيقونة حسب المحتوى
                 let icon = 'fas fa-star';
                 if (item.includes('عاجل') || item.includes('هام')) icon = 'fas fa-bolt';
                 else if (item.includes('تحديث')) icon = 'fas fa-sync-alt';
                 else if (item.includes('جديد')) icon = 'fas fa-gift';
                 
-                html += `<div class="news-item"><i class="${icon} news-icon"></i><span>${escapeHtmlNews(item)}</span></div>`;
-                if (idx < newsItems.length - 1) html += `<span class="news-separator">✦</span>`;
+                html += `<div class="news-item">
+                            <i class="${icon} news-icon"></i>
+                            <span>${escapeHtmlNews(item)}</span>
+                        </div>`;
+                
+                if (idx < newsItems.length - 1) {
+                    html += `<span class="news-separator">✦</span>`;
+                }
             });
-            if (repeat === 0) html += `<span class="news-separator" style="margin:0 25px;">◆ ◆ ◆</span>`;
+            if (repeat === 0) {
+                html += `<span class="news-separator" style="margin:0 25px;">◆ ◆ ◆</span>`;
+            }
         }
         
         newsContent.innerHTML = html;
         newsBar.style.display = 'flex';
+        newsBar.style.visibility = 'visible';
         
+        // ضبط سرعة الحركة حسب طول المحتوى
         const ticker = document.querySelector('.news-ticker');
         if (ticker) {
             ticker.style.animation = 'none';
-            ticker.offsetHeight;
+            ticker.offsetHeight; // إعادة التدفق
             const contentWidth = newsContent.scrollWidth;
             const speed = Math.max(15, Math.min(40, contentWidth / 50));
             ticker.style.animation = `tickerScroll ${speed}s linear infinite`;
         }
         
+        console.log('✅ تم عرض', newsItems.length, 'خبر بنجاح');
+        
     } catch (error) {
-        console.error('خطأ في تحميل الأخبار:', error);
+        console.error('❌ خطأ في تحميل الأخبار:', error);
         newsContent.innerHTML = '<div class="news-item">⚠️ تعذر تحميل الأخبار</div>';
         newsBar.style.display = 'flex';
     }
 }
 
-// دالة مساعدة لتجنب XSS (مخصصة للأخبار فقط)
+// دالة تنظيف النص من الرموز الضارة
 function escapeHtmlNews(str) {
     if (!str) return '';
     return str.replace(/[&<>]/g, function(m) {
@@ -7375,12 +7407,14 @@ function escapeHtmlNews(str) {
     });
 }
 
-// دالة تهيئة شريط الأخبار (تستدعى بعد تسجيل الدخول)
+// تهيئة شريط الأخبار
 function initNewsBar() {
     const newsBar = document.getElementById('newsBar');
-    if (!newsBar) return;
-    
-    // إظهار الشريط وتحميل الأخبار
+    if (!newsBar) {
+        console.error('❌ لم يتم العثور على شريط الأخبار في الصفحة');
+        return;
+    }
+    console.log('✅ جاري تهيئة شريط الأخبار...');
     newsBar.style.display = 'flex';
     loadNewsFromDrive();
 }
