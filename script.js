@@ -7327,12 +7327,15 @@ async function loadNewsFromDrive() {
     const newsBar = document.getElementById('newsBar');
     const newsContent = document.getElementById('newsTickerContent');
     
-    if (!newsBar || !newsContent) return;
+    if (!newsBar || !newsContent) {
+        console.error('❌ عناصر شريط الأخبار غير موجودة');
+        return;
+    }
 
+    // ✅ الرابط المباشر للملف (تأكد من وجود الملف)
     const newsUrl = 'https://raw.githubusercontent.com/revenudchc-boop/dataconnect/main/news.txt';
 
     try {
-        // ✅ إظهار رسالة "جاري التحميل" فوراً
         newsContent.innerHTML = '<div class="news-item"><i class="fas fa-spinner fa-spin"></i> جاري تحميل الأخبار...</div>';
         newsBar.style.display = 'flex';
         
@@ -7343,7 +7346,6 @@ async function loadNewsFromDrive() {
         let newsItems = content.split(/\r?\n/).filter(line => line.trim() !== '');
         if (newsItems.length === 0) newsItems = ['مرحباً بك في نظام الفواتير المتقدم'];
         
-        // ✅ بناء HTML للأخبار (مباشرة بدون تأخير)
         let html = '';
         for (let repeat = 0; repeat < 3; repeat++) {
             newsItems.forEach((item, idx) => {
@@ -7352,47 +7354,33 @@ async function loadNewsFromDrive() {
                 else if (item.includes('تحديث')) icon = 'fas fa-sync-alt';
                 else if (item.includes('جديد')) icon = 'fas fa-gift';
                 else if (item.includes('🎉')) icon = 'fas fa-party-horn';
-                else if (item.includes('📢')) icon = 'fas fa-bullhorn';
                 
-                html += `<div class="news-item">
-                            <i class="${icon} news-icon"></i>
-                            <span>${escapeHtmlNews(item)}</span>
-                        </div>`;
+                html += `<div class="news-item"><i class="${icon} news-icon"></i><span>${escapeHtmlNews(item)}</span></div>`;
                 if (idx < newsItems.length - 1) html += `<span class="news-separator">✦</span>`;
             });
             if (repeat < 2) html += `<span class="news-separator" style="margin:0 25px;">◆ ◆ ◆</span>`;
         }
         
-        // ✅ تحديث المحتوى مباشرة
         newsContent.innerHTML = html;
         
-        // ✅ إعادة تعيين الحركة فوراً
         const ticker = document.querySelector('.news-ticker');
         if (ticker) {
             ticker.style.animation = 'none';
-            ticker.style.transform = 'translateY(-50%) translateX(100%)';
-            
-            // ✅ انتظار بسيط لضمان اكتمال DOM
-            await new Promise(resolve => setTimeout(resolve, 50));
-            
+            ticker.offsetHeight;
             const contentWidth = newsContent.scrollWidth;
-            const calculatedDuration = Math.max(30, (contentWidth / 100) * 0.7);
-            const speedMultiplier = 2.2;  // أبطأ قليلاً
-            const finalDuration = (calculatedDuration * speedMultiplier).toFixed(1);
-            
-            ticker.style.animation = `scrollTicker ${finalDuration}s linear infinite`;
+            const duration = Math.max(30, Math.min(80, contentWidth / 40));
+            ticker.style.animation = `tickerScroll ${duration}s linear infinite`;
+            console.log(`✅ سرعة الشريط: ${duration} ثانية`);
         }
-        
-        console.log(`✅ تم تحميل ${newsItems.length} خبر - المدة: ${finalDuration} ثانية`);
         
     } catch (error) {
         console.error('خطأ في تحميل الأخبار:', error);
-        const newsContent = document.getElementById('newsTickerContent');
-        if (newsContent) {
-            newsContent.innerHTML = '<div class="news-item">⚠️ تعذر تحميل الأخبار، تأكد من الاتصال بالإنترنت</div>';
+        const newsContentElem = document.getElementById('newsTickerContent');
+        if (newsContentElem) {
+            newsContentElem.innerHTML = '<div class="news-item">⚠️ تعذر تحميل الأخبار</div>';
         }
-        const newsBar = document.getElementById('newsBar');
-        if (newsBar) newsBar.style.display = 'flex';
+        const newsBarElem = document.getElementById('newsBar');
+        if (newsBarElem) newsBarElem.style.display = 'flex';
     }
 }
 
