@@ -7323,48 +7323,80 @@ async function loadNewsFromDrive() {
     const newsContent = document.getElementById('newsTickerContent');
     if (!newsBar || !newsContent) return;
 
-    // التحقق من حالة الرؤية المخزنة (افتراضي ظاهر)
-    const isVisible = localStorage.getItem(NEWS_VISIBLE_KEY) !== 'false';
-    if (!isVisible) {
-        newsBar.classList.add('hidden');
-        updateToggleButtonIcon(false);
-    } else {
-        newsBar.classList.remove('hidden');
-        updateToggleButtonIcon(true);
-    }
-
-    // التحقق من وجود بيانات مخزنة حديثة
-    const cached = localStorage.getItem(NEWS_CACHE_KEY);
-    if (cached) {
-        try {
-            const { data, timestamp } = JSON.parse(cached);
-            if (Date.now() - timestamp < NEWS_CACHE_TIME) {
-                displayNewsTicker(data);
-                newsBar.style.display = 'flex';
-                return;
-            }
-        } catch(e) {}
-    }
+    // ✅ استخدام الرابط المباشر لملف news.txt من مستودع dataconnect على GitHub
+    const newsUrl = 'https://raw.githubusercontent.com/revenudchc-boop/dataconnect/main/news.txt';
 
     try {
-        const apiKey = driveConfig.apiKey || 'AIzaSyBy4WRI3zkUwlCvbrXpB8o9ZbFMuH4AdGA';
-        const url = `https://www.googleapis.com/drive/v3/files/${NEWS_FILE_ID}?alt=media&key=${apiKey}`;
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        console.log('جاري تحميل الأخبار من:', newsUrl);
+        const response = await fetch(newsUrl);
+        
+        if (!response.ok) {
+            throw new Error(`فشل التحميل: ${response.status} ${response.statusText}`);
+        }
+        
         const content = await response.text();
+        console.log('تم تحميل محتوى الأخبار بنجاح');
+
+        // تقسيم النص إلى أخبار منفصلة (كل سطر خبر)
+        let newsItems = content.split(/\r?\n/).filter(line => line.trim() !== '');
         
-        // تحويل النص إلى قائمة أخبار، مع تجاهل الأسطر التي تبدأ بـ # (تعليق)
-        let newsItems = content.split(/\r?\n/)
-            .map(line => line.trim())
-            .filter(line => line !== '' && !line.startsWith('#'));
+        if (newsItems.length === 0) {
+            newsItems = ['مرحباً بك في نظام الفواتير المتقدم'];
+        }
+
+        // بناء HTML للأخبار مع فواصل متحركة
+        let html = '';
+        // نكرر الأخبار مرتين لإنشاء حركة مستمرة
+        for (let repeat = 0; repeat < 2; repeat++) {
+            newsItems.forEach((item, idx) => {
+                // اختيار أيقونة حسب محتوى الخبر
+                let icon = 'fas fa-star';
+                if (item.includes('عاجل') || item.includes('هام')) icon = 'fas fa-bolt';
+                else if (item.includes('تحديث')) icon = 'fas fa-sync-alt';
+                else if (item.includes('جديد')) icon = 'fas fa-gift';
+                else if (item.includes('🎉')) icon = 'fas fa-party-horn';
+
+                html += `
+                    <div class="news-item">
+                        <i class="${icon} news-icon"></i>
+                        <span>${escapeHtml(item)}</span>
+                    </div>
+                `;
+
+                // إضافة فاصل بين الأخبار (باستثناء آخر خبر)
+                if (idx < newsItems.length - 1) {
+                    html += `<span class="news-separator">✦</span>`;
+                }
+            });
+
+            // إضافة فاصل طويل بين التكرارات
+            if (repeat === 0) {
+                html += `<span class="news-separator" style="margin:0 25px;">◆ ◆ ◆</span>`;
+            }
+        }
+
+        newsContent.innerHTML = html;
+        newsBar.style.display = 'flex';
         
-        if (newsItems.length === 0) newsItems = ['مرحباً بك في نظام الفواتير المتقدم'];
-        
-        // تخزين مؤقت
-        localStorage.setItem(NEWS_CACHE_KEY, JSON.stringify({
-            data: newsItems,
-            timestamp: Date.now()
-        }));
+        // إعادة تعيين سرعة الحركة حسب طول المحتوى
+        const ticker = document.querySelector('.news-ticker');
+        if (ticker) {
+            ticker.style.animation = 'none';
+            ticker.offsetHeight; // إعادة تدفق
+            const contentWidth = newsContent.scrollWidth;
+            const speed = Math.max(15, Math.min(40, contentWidth / 50));
+            ticker.style.animation = `tickerScroll ${speed}s linear infinite`;
+        }
+
+        // (اختياري) حفظ حالة الإظهار في localStorage
+        localStorage.setItem('newsBarHidden', 'false');
+
+    } catch (error) {
+        console.error('خطأ في تحميل أو عرض الأخبار:', error);
+        newsContent.innerHTML = '<div class="news-item">⚠️ تعذر تحميل الأخبار، تأكد من اتصال الإنترنت.</div>';
+        newsBar.style.display = 'flex';
+    }
+}
         
         displayNewsTicker(newsItems);
         newsBar.style.display = 'flex';
