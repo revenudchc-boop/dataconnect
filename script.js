@@ -7327,40 +7327,23 @@ async function loadNewsFromDrive() {
     const newsBar = document.getElementById('newsBar');
     const newsContent = document.getElementById('newsTickerContent');
     
-    if (!newsBar) {
-        console.error('❌ عنصر newsBar غير موجود في الصفحة');
-        return;
-    }
-    if (!newsContent) {
-        console.error('❌ عنصر newsTickerContent غير موجود');
-        return;
-    }
+    if (!newsBar || !newsContent) return;
 
-    // الرابط المباشر للملف على GitHub
     const newsUrl = 'https://raw.githubusercontent.com/revenudchc-boop/dataconnect/main/news.txt';
 
     try {
-        console.log('🔄 جاري تحميل الأخبار من:', newsUrl);
         const response = await fetch(newsUrl);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status} - ${response.statusText}`);
-        }
-        
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const content = await response.text();
-        console.log('✅ تم تحميل المحتوى:', content);
         
-        // تقسيم النص إلى أخبار (كل سطر خبر منفصل)
         let newsItems = content.split(/\r?\n/).filter(line => line.trim() !== '');
-        if (newsItems.length === 0) {
-            newsItems = ['مرحباً بك في نظام الفواتير المتقدم'];
-        }
+        if (newsItems.length === 0) newsItems = ['مرحباً بك في نظام الفواتير المتقدم'];
         
-        // بناء HTML للأخبار
+        // ========== التعديل الجوهري هنا ==========
+        // بناء الأخبار (نكررها 3 مرات لضمان الحركة المستمرة)
         let html = '';
-        for (let repeat = 0; repeat < 2; repeat++) {
+        for (let repeat = 0; repeat < 3; repeat++) {
             newsItems.forEach((item, idx) => {
-                // اختيار أيقونة حسب المحتوى
                 let icon = 'fas fa-star';
                 if (item.includes('عاجل') || item.includes('هام')) icon = 'fas fa-bolt';
                 else if (item.includes('تحديث')) icon = 'fas fa-sync-alt';
@@ -7370,13 +7353,12 @@ async function loadNewsFromDrive() {
                             <i class="${icon} news-icon"></i>
                             <span>${escapeHtmlNews(item)}</span>
                         </div>`;
-                
                 if (idx < newsItems.length - 1) {
                     html += `<span class="news-separator">✦</span>`;
                 }
             });
-            if (repeat === 0) {
-                html += `<span class="news-separator" style="margin:0 25px;">◆ ◆ ◆</span>`;
+            if (repeat < 2) {
+                html += `<span class="news-separator" style="margin:0 30px;">◆ ◆ ◆</span>`;
             }
         }
         
@@ -7384,20 +7366,22 @@ async function loadNewsFromDrive() {
         newsBar.style.display = 'flex';
         newsBar.style.visibility = 'visible';
         
-        // ضبط سرعة الحركة حسب طول المحتوى
+        // إعادة تعيين وتشغيل الحركة
         const ticker = document.querySelector('.news-ticker');
         if (ticker) {
+            // إزالة animation القديمة
             ticker.style.animation = 'none';
-            ticker.offsetHeight; // إعادة التدفق
+            // إعادة التدفق (reflow)
+            ticker.offsetHeight;
+            // حساب المدة المناسبة (كلما زاد العرض زادت المدة)
             const contentWidth = newsContent.scrollWidth;
-            const speed = Math.max(15, Math.min(40, contentWidth / 50));
+            const speed = Math.max(25, Math.min(60, contentWidth / 40));
+            // إضافة animation جديدة
             ticker.style.animation = `tickerScroll ${speed}s linear infinite`;
         }
         
-        console.log('✅ تم عرض', newsItems.length, 'خبر بنجاح');
-        
     } catch (error) {
-        console.error('❌ خطأ في تحميل الأخبار:', error);
+        console.error('خطأ في تحميل الأخبار:', error);
         newsContent.innerHTML = '<div class="news-item">⚠️ تعذر تحميل الأخبار</div>';
         newsBar.style.display = 'flex';
     }
