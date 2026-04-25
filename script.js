@@ -3267,7 +3267,7 @@ async function exportSingleInvoice() {
         showProgress(`تقسيم إلى ${totalPages} صفحات...`, 10);
         
         // تداخل 12 بكسل لتجنب قطع النص
-        const overlapPx = 12;
+        const overlapPx = 6;
         
         for (let i = 0; i < totalPages; i++) {
             if (i > 0) pdf.addPage();
