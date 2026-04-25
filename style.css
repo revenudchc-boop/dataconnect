@@ -1977,8 +1977,23 @@ header {
    تنسيقات إضافية للطباعة و QR Code
 ======================================== */
 
-/* تحسين عرض QR Code في الطباعة */
-@media print {
-    #qrcode-container-
-	
-	
+
+
+/* منع التفاف النص في جداول الفاتورة المنبثقة */
+#invoicePrint .charges-table td {
+    white-space: nowrap !important;
+    padding: 8px 4px !important;
+}
+#invoicePrint .charges-table {
+    table-layout: auto !important;
+    min-width: 100%;
+}
+#invoicePrint .charges-section {
+    overflow-x: auto !important;
+}
+
+/* منع التفاف النص في خلايا جدول الفاتورة أثناء تصدير PDF فقط */
+.pdf-export-nowrap .charges-table td {
+    white-space: nowrap !important;
+}
+
