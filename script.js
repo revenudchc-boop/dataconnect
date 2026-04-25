@@ -52,6 +52,7 @@ let viewModeCredit = 'cards';
 let selectedCreditNotes = new Set();
 // متغير لتخزين الفواتير التي تمت معاينتها
 let viewedInvoices = new Set();
+const NEWS_VISIBLE_KEY = 'newsBarVisible';
 // ============================================
 // إعدادات التحديث التلقائي (Auto Refresh)
 // ============================================
