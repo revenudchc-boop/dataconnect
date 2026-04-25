@@ -7395,7 +7395,7 @@ async function loadNewsFromDrive() {
             // 60 = دقيقة كاملة (بطيء - موصى به)
             // 75 = دقيقة وربع (بطيء جداً)
             // 90 = دقيقة ونصف (مريح جداً للقراءة)
-            const duration = 60;  // ← غيّر هذا الرقم للتحكم بالسرعة
+            const duration = 180;  // ← غيّر هذا الرقم للتحكم بالسرعة
             
             ticker.style.animation = `scrollTicker ${duration}s linear infinite`;
             console.log(`✅ تم ضبط سرعة الشريط: ${duration} ثانية`);
