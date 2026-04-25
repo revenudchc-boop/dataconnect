@@ -7324,17 +7324,11 @@ async function loadNewsFromDrive() {
     const newsContent = document.getElementById('newsTickerContent');
     if (!newsBar || !newsContent) return;
 
-    // الرابط المباشر لملف news.txt من مستودع dataconnect على GitHub
     const newsUrl = 'https://raw.githubusercontent.com/revenudchc-boop/dataconnect/main/news.txt';
 
     try {
-        console.log('جاري تحميل الأخبار من:', newsUrl);
         const response = await fetch(newsUrl);
-        
-        if (!response.ok) {
-            throw new Error(`فشل التحميل: ${response.status}`);
-        }
-        
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const content = await response.text();
         
         let newsItems = content.split(/\r?\n/).filter(line => line.trim() !== '');
@@ -7348,19 +7342,10 @@ async function loadNewsFromDrive() {
                 else if (item.includes('تحديث')) icon = 'fas fa-sync-alt';
                 else if (item.includes('جديد')) icon = 'fas fa-gift';
                 
-                html += `
-                    <div class="news-item">
-                        <i class="${icon} news-icon"></i>
-                        <span>${escapeHtml(item)}</span>
-                    </div>
-                `;
-                if (idx < newsItems.length - 1) {
-                    html += `<span class="news-separator">✦</span>`;
-                }
+                html += `<div class="news-item"><i class="${icon} news-icon"></i><span>${escapeHtml(item)}</span></div>`;
+                if (idx < newsItems.length - 1) html += `<span class="news-separator">✦</span>`;
             });
-            if (repeat === 0) {
-                html += `<span class="news-separator" style="margin:0 25px;">◆ ◆ ◆</span>`;
-            }
+            if (repeat === 0) html += `<span class="news-separator" style="margin:0 25px;">◆ ◆ ◆</span>`;
         }
         
         newsContent.innerHTML = html;
@@ -7374,14 +7359,12 @@ async function loadNewsFromDrive() {
             const speed = Math.max(15, Math.min(40, contentWidth / 50));
             ticker.style.animation = `tickerScroll ${speed}s linear infinite`;
         }
-        
     } catch (error) {
         console.error('خطأ في تحميل الأخبار:', error);
         newsContent.innerHTML = '<div class="news-item">⚠️ تعذر تحميل الأخبار</div>';
         newsBar.style.display = 'flex';
     }
 }
-        
         displayNewsTicker(newsItems);
         newsBar.style.display = 'flex';
         
