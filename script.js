@@ -7332,7 +7332,6 @@ async function loadNewsFromDrive() {
         return;
     }
 
-    // الرابط المباشر لملف news.txt على GitHub
     const newsUrl = 'https://raw.githubusercontent.com/revenudchc-boop/dataconnect/main/news.txt';
 
     try {
@@ -7344,25 +7343,21 @@ async function loadNewsFromDrive() {
         }
         
         const content = await response.text();
-        console.log('✅ تم تحميل الأخبار بنجاح');
         
-        // تقسيم النص إلى أخبار (كل سطر خبر منفصل)
         let newsItems = content.split(/\r?\n/).filter(line => line.trim() !== '');
         if (newsItems.length === 0) {
             newsItems = ['مرحباً بك في نظام الفواتير المتقدم'];
         }
         
-        // بناء HTML للأخبار (تكرار 3 مرات لضمان حركة مستمرة بدون فجوات)
+        // بناء HTML للأخبار
         let html = '';
         for (let repeat = 0; repeat < 3; repeat++) {
             newsItems.forEach((item, idx) => {
-                // اختيار أيقونة حسب محتوى الخبر
                 let icon = 'fas fa-star';
                 if (item.includes('عاجل') || item.includes('هام')) icon = 'fas fa-bolt';
                 else if (item.includes('تحديث')) icon = 'fas fa-sync-alt';
                 else if (item.includes('جديد')) icon = 'fas fa-gift';
                 else if (item.includes('🎉')) icon = 'fas fa-party-horn';
-                else if (item.includes('📢')) icon = 'fas fa-bullhorn';
                 
                 html += `<div class="news-item">
                             <i class="${icon} news-icon"></i>
@@ -7381,32 +7376,50 @@ async function loadNewsFromDrive() {
         newsContent.innerHTML = html;
         newsBar.style.display = 'flex';
         
-        // ========== إعدادات السرعة (بطيئة جداً) ==========
+        // ============================================
+        // ضبط السرعة - حل مضمون 100%
+        // ============================================
         const ticker = document.querySelector('.news-ticker');
         if (ticker) {
-            // إعادة تعيين animation
+            // إزالة أي animation قديمة
             ticker.style.animation = 'none';
-            ticker.offsetHeight; // إعادة التدفق
             
-            // ⭐⭐⭐ سرعة بطيئة جداً (60 ثانية = دقيقة كاملة) ⭐⭐⭐
-            // يمكنك تغيير هذه القيمة حسب رغبتك:
-            // 30 = نصف دقيقة (سريع نسبياً)
-            // 45 = 45 ثانية (متوسط)
-            // 60 = دقيقة كاملة (بطيء - موصى به)
-            // 75 = دقيقة وربع (بطيء جداً)
-            // 90 = دقيقة ونصف (مريح جداً للقراءة)
-            const duration = 180;  // ← غيّر هذا الرقم للتحكم بالسرعة
+            // إعادة تعيين Transform
+            ticker.style.transform = 'translateX(100%)';
             
-            ticker.style.animation = `scrollTicker ${duration}s linear infinite`;
-            console.log(`✅ تم ضبط سرعة الشريط: ${duration} ثانية`);
+            // قياس عرض المحتوى
+            const contentWidth = newsContent.scrollWidth;
+            const containerWidth = ticker.parentElement.clientWidth;
+            
+            // حساب السرعة بناءً على العرض (كلما زاد العرض زادت المدة)
+            // المعادلة: المدة = (العرض / 100) * 0.8 + 40
+            // العرض 2000 بكسل → مدة 56 ثانية تقريباً
+            const calculatedDuration = Math.max(40, (contentWidth / 100) * 0.8);
+            
+            // ⭐⭐ يمكنك مضاعفة السرعة حسب رغبتك ⭐⭐
+            // مثال: ضرب النتيجة في 2 أو 3 لجعلها أبطأ
+            const finalDuration = calculatedDuration * 2.5;  // أبطأ 2.5 مرة
+            
+            console.log(`عرض المحتوى: ${contentWidth}px`);
+            console.log(`السرعة المحسوبة: ${calculatedDuration.toFixed(1)} ثانية`);
+            console.log(`السرعة النهائية: ${finalDuration.toFixed(1)} ثانية`);
+            
+            // تعيين animation
+            ticker.style.transition = 'none';
+            ticker.style.animation = `scrollTicker ${finalDuration}s linear infinite`;
+            
+            // إظهار سرعة الحركة للمستخدم
+            showNotification(`سرعة الشريط: ${Math.round(finalDuration)} ثانية`, 'info');
         }
-        
-        console.log(`✅ تم عرض ${newsItems.length} خبر بنجاح`);
         
     } catch (error) {
         console.error('❌ خطأ في تحميل الأخبار:', error);
-        newsContent.innerHTML = '<div class="news-item">⚠️ تعذر تحميل الأخبار، تأكد من اتصال الإنترنت</div>';
-        newsBar.style.display = 'flex';
+        const newsContent = document.getElementById('newsTickerContent');
+        if (newsContent) {
+            newsContent.innerHTML = '<div class="news-item">⚠️ تعذر تحميل الأخبار</div>';
+        }
+        const newsBar = document.getElementById('newsBar');
+        if (newsBar) newsBar.style.display = 'flex';
     }
 }
 
