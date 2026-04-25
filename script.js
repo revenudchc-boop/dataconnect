@@ -7320,7 +7320,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 // ============================================
-// شريط الأخبار المتحرك - الطريقة الجديدة
+// شريط الأخبار المتحرك - نسخة بطيئة ومستقرة
 // ============================================
 
 async function loadNewsFromDrive() {
@@ -7352,7 +7352,7 @@ async function loadNewsFromDrive() {
             newsItems = ['مرحباً بك في نظام الفواتير المتقدم'];
         }
         
-        // بناء HTML للأخبار (تكرار 3 مرات لضمان حركة مستمرة)
+        // بناء HTML للأخبار (تكرار 3 مرات لضمان حركة مستمرة بدون فجوات)
         let html = '';
         for (let repeat = 0; repeat < 3; repeat++) {
             newsItems.forEach((item, idx) => {
@@ -7362,6 +7362,7 @@ async function loadNewsFromDrive() {
                 else if (item.includes('تحديث')) icon = 'fas fa-sync-alt';
                 else if (item.includes('جديد')) icon = 'fas fa-gift';
                 else if (item.includes('🎉')) icon = 'fas fa-party-horn';
+                else if (item.includes('📢')) icon = 'fas fa-bullhorn';
                 
                 html += `<div class="news-item">
                             <i class="${icon} news-icon"></i>
@@ -7380,17 +7381,24 @@ async function loadNewsFromDrive() {
         newsContent.innerHTML = html;
         newsBar.style.display = 'flex';
         
-        // حساب سرعة الحركة المناسبة (كلما زادت الأخبار زادت المدة)
+        // ========== إعدادات السرعة (بطيئة جداً) ==========
         const ticker = document.querySelector('.news-ticker');
         if (ticker) {
-            // إزالة animation القديمة وإعادة تعيينها
+            // إعادة تعيين animation
             ticker.style.animation = 'none';
-            ticker.offsetHeight; // إعادة التدفق (reflow)
+            ticker.offsetHeight; // إعادة التدفق
             
-            const totalItems = newsItems.length;
-            const duration = Math.max(20, Math.min(50, totalItems * 1.5));
+            // ⭐⭐⭐ سرعة بطيئة جداً (60 ثانية = دقيقة كاملة) ⭐⭐⭐
+            // يمكنك تغيير هذه القيمة حسب رغبتك:
+            // 30 = نصف دقيقة (سريع نسبياً)
+            // 45 = 45 ثانية (متوسط)
+            // 60 = دقيقة كاملة (بطيء - موصى به)
+            // 75 = دقيقة وربع (بطيء جداً)
+            // 90 = دقيقة ونصف (مريح جداً للقراءة)
+            const duration = 60;  // ← غيّر هذا الرقم للتحكم بالسرعة
+            
             ticker.style.animation = `scrollTicker ${duration}s linear infinite`;
-            console.log(`✅ تم ضبط سرعة الحركة: ${duration} ثانية`);
+            console.log(`✅ تم ضبط سرعة الشريط: ${duration} ثانية`);
         }
         
         console.log(`✅ تم عرض ${newsItems.length} خبر بنجاح`);
@@ -7417,7 +7425,7 @@ function escapeHtmlNews(str) {
         });
 }
 
-// تهيئة شريط الأخبار
+// تهيئة شريط الأخبار (يتم استدعاؤها بعد تسجيل الدخول)
 function initNewsBar() {
     const newsBar = document.getElementById('newsBar');
     if (!newsBar) {
@@ -7427,6 +7435,17 @@ function initNewsBar() {
     console.log('🔄 جاري تهيئة شريط الأخبار...');
     newsBar.style.display = 'flex';
     loadNewsFromDrive();
+}
+
+// دالة إعادة ضبط سرعة الشريط (اختيارية - يمكن استدعاؤها يدوياً)
+function setNewsTickerSpeed(seconds) {
+    const ticker = document.querySelector('.news-ticker');
+    if (ticker) {
+        ticker.style.animation = 'none';
+        ticker.offsetHeight;
+        ticker.style.animation = `scrollTicker ${seconds}s linear infinite`;
+        console.log(`✅ تم تغيير سرعة الشريط إلى ${seconds} ثانية`);
+    }
 }
 
 window.initNewsBar = initNewsBar;

@@ -1998,7 +1998,7 @@ header {
 }
 
 /* ========================================
-   شريط الأخبار المتحرك - الطريقة الجديدة (بدون فجوات)
+   شريط الأخبار المتحرك - بطيء وسلس
 ======================================== */
 .news-ticker-container {
     background: linear-gradient(135deg, #1e3c72, #2a5298);
@@ -2052,9 +2052,10 @@ header {
     direction: ltr;
     top: 0;
     left: 0;
-    animation: scrollTicker 25s linear infinite;
+    animation: scrollTicker 60s linear infinite;  /* 60 ثانية = دقيقة كاملة (بطيء) */
 }
 
+/* توقف الحركة عند المرور بالماوس */
 .news-ticker:hover {
     animation-play-state: paused;
 }
