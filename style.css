@@ -2048,31 +2048,31 @@ header {
 .news-ticker-wrapper {
     flex: 1;
     overflow: hidden;
-    margin: 0 20px;
+    margin: 0 15px;
     position: relative;
     height: 50px;
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 60px;
-    padding: 0 10px;
+    display: flex;
+    align-items: center;  /* توسيط عمودي */
 }
+
 
 /* المحتوى المتحرك */
 .news-ticker {
-    position: absolute;
     white-space: nowrap;
     direction: ltr;
-    top: 50%;
-    transform: translateY(-50%);
-    left: 0;
-    will-change: transform;
+    position: relative;
+    width: 100%;
 }
+
 
 /* العنصر الداخلي */
 .news-ticker-content {
     display: inline-block;
     white-space: nowrap;
     direction: rtl;
+    vertical-align: middle;  /* توسيط إضافي */
 }
+
 
 /* الخبر الواحد */
 .news-item {
