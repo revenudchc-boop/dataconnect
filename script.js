@@ -7315,9 +7315,6 @@ document.addEventListener('DOMContentLoaded', () => {
 // ============================================
 // شريط الأخبار المتحرك المتطور (News Ticker)
 // ============================================
-const NEWS_FILE_ID = '1XOsN5gRzJtH0rY5Q020Z4J2j3Sb1_2Wk';
-const NEWS_CACHE_KEY = 'newsData';
-const NEWS_CACHE_TIME = 30 * 60 * 1000; // 30 دقيقة
 
 async function loadNewsFromDrive() {
     const newsBar = document.getElementById('newsBar');
@@ -7334,7 +7331,6 @@ async function loadNewsFromDrive() {
         let newsItems = content.split(/\r?\n/).filter(line => line.trim() !== '');
         if (newsItems.length === 0) newsItems = ['مرحباً بك في نظام الفواتير المتقدم'];
         
-        // عرض الأخبار مباشرة دون استدعاء دالة خارجية
         let html = '';
         for (let repeat = 0; repeat < 2; repeat++) {
             newsItems.forEach((item, idx) => {
@@ -7343,7 +7339,7 @@ async function loadNewsFromDrive() {
                 else if (item.includes('تحديث')) icon = 'fas fa-sync-alt';
                 else if (item.includes('جديد')) icon = 'fas fa-gift';
                 
-                html += `<div class="news-item"><i class="${icon} news-icon"></i><span>${escapeHtml(item)}</span></div>`;
+                html += `<div class="news-item"><i class="${icon} news-icon"></i><span>${escapeHtmlNews(item)}</span></div>`;
                 if (idx < newsItems.length - 1) html += `<span class="news-separator">✦</span>`;
             });
             if (repeat === 0) html += `<span class="news-separator" style="margin:0 25px;">◆ ◆ ◆</span>`;
@@ -7368,109 +7364,23 @@ async function loadNewsFromDrive() {
     }
 }
 
-function displayNewsTicker(newsItems) {
-    const container = document.getElementById('newsTickerContent');
-    if (!container) return;
-    
-    let html = '';
-    // نكرر الأخبار مرتين لإنشاء حلقة لا نهائية (لأننا نريد أن يمر المحتوى كاملاً ثم يعيد)
-    for (let repeat = 0; repeat < 2; repeat++) {
-        newsItems.forEach((item, idx) => {
-            // إضافة أيقونة مميزة لكل خبر (يمكن تغييرها حسب المحتوى)
-            let icon = 'fas fa-star';
-            if (item.includes('عاجل') || item.includes('هام')) icon = 'fas fa-bolt';
-            else if (item.includes('تحديث')) icon = 'fas fa-sync-alt';
-            else if (item.includes('جديد')) icon = 'fas fa-gift';
-            
-            html += `
-                <div class="news-item">
-                    <i class="${icon} news-icon"></i>
-                    <span>${escapeHtml(item)}</span>
-                </div>
-            `;
-            // إضافة فاصل مميز بين الأخبار (باستثناء آخر خبر)
-            if (idx < newsItems.length - 1) {
-                html += `<span class="news-separator">✦</span>`;
-            }
-        });
-        // إضافة فاصل طويل بين التكرارات (اختياري)
-        if (repeat === 0) {
-            html += `<span class="news-separator" style="margin:0 20px;">◆ ◆ ◆</span>`;
-        }
-    }
-    
-    container.innerHTML = html;
-    
-    // إعادة تعيين مدة الحركة حسب طول المحتوى (لتحسين السرعة)
-    const ticker = document.querySelector('.news-ticker');
-    if (ticker) {
-        const contentWidth = container.scrollWidth;
-        const speed = Math.max(20, Math.min(50, contentWidth / 50));
-        ticker.style.animationDuration = `${speed}s`;
-    }
-}
-
-// دالة مساعدة لتجنب XSS
-function escapeHtml(str) {
+// دالة مساعدة لتجنب XSS (مخصصة للأخبار فقط)
+function escapeHtmlNews(str) {
+    if (!str) return '';
     return str.replace(/[&<>]/g, function(m) {
         if (m === '&') return '&amp;';
         if (m === '<') return '&lt;';
         if (m === '>') return '&gt;';
         return m;
-    }).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, function(c) {
-        return c;
     });
 }
 
-window.closeNewsBar = function() {
-    const newsBar = document.getElementById('newsBar');
-    if (newsBar) {
-        newsBar.style.display = 'none';
-        sessionStorage.setItem('newsClosed', 'true');
-    }
-};
-
-function shouldShowNews() {
-    return sessionStorage.getItem('newsClosed') !== 'true';
-}
-
-function toggleNewsBar() {
-    const newsBar = document.getElementById('newsBar');
-    const toggleBtn = document.getElementById('newsToggleBtn');
-    
-    if (!newsBar) return;
-    
-    if (newsBar.style.display === 'flex') {
-        newsBar.style.display = 'none';
-        localStorage.setItem('newsBarHidden', 'true');
-        if (toggleBtn) toggleBtn.innerHTML = '<i class="fas fa-newspaper"></i>';
-    } else {
-        newsBar.style.display = 'flex';
-        localStorage.setItem('newsBarHidden', 'false');
-        if (toggleBtn) toggleBtn.innerHTML = '<i class="fas fa-times"></i>';
-    }
-}
-
-// استعادة الحالة عند تحميل الصفحة
-function restoreNewsBarState() {
-    const newsBar = document.getElementById('newsBar');
-    if (!newsBar) return;
-    
-    // دائماً نعرض الشريط
-    newsBar.style.display = 'flex';
-    localStorage.setItem('newsBarHidden', 'false');
-}
-
+// دالة تهيئة شريط الأخبار (تستدعى بعد تسجيل الدخول)
 function initNewsBar() {
-    // تحميل الأخبار دون التحقق من حالة الإخفاء (نريدها ظاهرة دائماً)
-    loadNewsFromDrive();
-    
-    // التأكد من أن الشريط ظاهر
     const newsBar = document.getElementById('newsBar');
-    if (newsBar) {
-        newsBar.style.display = 'flex';
-    }
+    if (!newsBar) return;
     
-    // إزالة أي تفضيلات سابقة للإخفاء
-    localStorage.removeItem('newsBarHidden');
+    // إظهار الشريط وتحميل الأخبار
+    newsBar.style.display = 'flex';
+    loadNewsFromDrive();
 }
