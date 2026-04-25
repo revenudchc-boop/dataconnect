@@ -3232,11 +3232,10 @@ async function exportSingleInvoice() {
     document.body.appendChild(loading);
     
     try {
-        // إضافة كلاس مؤقت لمنع التفاف النص
+        // منع التفاف النص مؤقتاً
         element.classList.add('pdf-export-nowrap');
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise(r => setTimeout(r, 50));
         
-        // تصوير كامل الفاتورة (مع QR code وجميع التفاصيل)
         const fullCanvas = await html2canvas(element, {
             scale: 2.0,
             backgroundColor: '#ffffff',
@@ -3249,25 +3248,6 @@ async function exportSingleInvoice() {
         
         element.classList.remove('pdf-export-nowrap');
         
-        // الحصول على جميع صفوف الجدول الرئيسية (بدون تفاصيل الحاويات المخفية)
-        const rows = Array.from(element.querySelectorAll('.charges-table tbody tr:not([id^="containers-"])'));
-        if (rows.length === 0) {
-            // في حال عدم وجود صفوف نستخدم التقسيم البسيط (نادر)
-            simpleSplit(fullCanvas, invoiceNumber);
-            return;
-        }
-        
-        // حساب الموضع الرأسي لكل صف نسبة لأعلى العنصر (بالبكسل الحقيقي)
-        const elementRect = element.getBoundingClientRect();
-        const rowPositions = rows.map(row => {
-            const rect = row.getBoundingClientRect();
-            return {
-                y: rect.top - elementRect.top,
-                height: rect.height
-            };
-        });
-        
-        // تجهيز إعدادات PDF
         const { jsPDF } = window.jspdf;
         const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
         const margin = 8;
@@ -3276,99 +3256,64 @@ async function exportSingleInvoice() {
         const contentWidth = pdfWidth - (margin * 2);
         const availableHeightMM = pdfHeight - (margin * 2);
         
-        // مقياس التحويل من بكسل العنصر الحقيقي إلى بكسل canvas الذي تم تصويره
-        const scaleFactor = fullCanvas.width / element.scrollWidth;
-        const canvasRows = rowPositions.map(p => ({
-            y: p.y * scaleFactor,
-            height: p.height * scaleFactor
-        }));
+        const imgWidth = fullCanvas.width;
+        const imgHeight = fullCanvas.height;
+        const scaleX = contentWidth / imgWidth;
+        const pageHeightPx = availableHeightMM / scaleX;
         
-        // ارتفاع الصفحة المتاح بالبكسل داخل canvas
-        const pageHeightPx = availableHeightMM * (fullCanvas.width / contentWidth);
+        // عدد الصفحات المحسوب بدقة
+        const totalPages = Math.ceil(imgHeight / pageHeightPx);
         
-        // تحديد نقاط التقسيم عند بدايات الصفوف التي تتجاوز نهاية الصفحة
-        let splitPoints = [0];
-        let currentEnd = pageHeightPx;
+        showProgress(`تقسيم إلى ${totalPages} صفحات...`, 10);
         
-        for (let i = 0; i < canvasRows.length; i++) {
-            const rowEnd = canvasRows[i].y + canvasRows[i].height;
-            if (rowEnd > currentEnd) {
-                splitPoints.push(canvasRows[i].y);
-                currentEnd = canvasRows[i].y + pageHeightPx;
-            }
-        }
-        splitPoints.push(fullCanvas.height);
+        // تداخل 12 بكسل لتجنب قطع النص
+        const overlapPx = 12;
         
-        // إزالة النقاط المتقاربة جداً (<5 بكسل)
-        for (let i = 1; i < splitPoints.length - 1; i++) {
-            if (splitPoints[i+1] - splitPoints[i] < 5) {
-                splitPoints.splice(i, 1);
-                i--;
-            }
-        }
-        
-        // إنشاء PDF (صفحات متعددة)
-        for (let s = 0; s < splitPoints.length - 1; s++) {
-            if (s > 0) pdf.addPage();
-            let startY = splitPoints[s];
-            let endY = splitPoints[s+1];
-            // تداخل بسيط (2 بكسل) لضمان عدم وجود فجوة بيضاء
-            if (s < splitPoints.length - 2) {
-                endY = Math.min(fullCanvas.height, endY + 2);
-            }
-            if (endY <= startY) continue;
+        for (let i = 0; i < totalPages; i++) {
+            if (i > 0) pdf.addPage();
             
+            let startY = i * pageHeightPx;
+            let endY = (i + 1) * pageHeightPx;
+            
+            // الصفحة الأخيرة تأخذ حتى نهاية الصورة
+            if (i === totalPages - 1) {
+                endY = imgHeight;
+            }
+            
+            // نضيف تداخل في البداية (باستثناء الصفحة الأولى) لالتقاط الصف المقطوع
+            if (i > 0) {
+                startY = Math.max(0, startY - overlapPx);
+            }
+            // نضيف تداخل في النهاية (باستثناء الصفحة الأخيرة) لالتقاط الصف المقطوع في الأسفل
+            if (i < totalPages - 1) {
+                endY = Math.min(imgHeight, endY + overlapPx);
+            }
+            
+            if (startY >= endY) continue;
+            
+            // قص الشريحة
             const sliceCanvas = document.createElement('canvas');
-            sliceCanvas.width = fullCanvas.width;
+            sliceCanvas.width = imgWidth;
             sliceCanvas.height = endY - startY;
             const ctx = sliceCanvas.getContext('2d');
-            ctx.drawImage(fullCanvas, 0, startY, fullCanvas.width, endY - startY, 0, 0, sliceCanvas.width, sliceCanvas.height);
+            ctx.drawImage(fullCanvas, 0, startY, imgWidth, sliceCanvas.height, 0, 0, sliceCanvas.width, sliceCanvas.height);
             
             const imgData = sliceCanvas.toDataURL('image/jpeg', 0.92);
-            const imgHeightMM = (endY - startY) * (contentWidth / fullCanvas.width);
-            pdf.addImage(imgData, 'JPEG', margin, margin, contentWidth, imgHeightMM);
+            const sliceHeightMM = sliceCanvas.height * scaleX;
+            pdf.addImage(imgData, 'JPEG', margin, margin, contentWidth, sliceHeightMM);
             
-            showProgress(`صفحة ${s+1} من ${splitPoints.length-1}`, Math.round(((s+1)/(splitPoints.length-1))*100));
+            showProgress(`صفحة ${i+1} من ${totalPages}`, Math.round(((i+1)/totalPages)*100));
         }
         
         pdf.save(`فاتورة-${invoiceNumber}.pdf`);
-        showNotification(`تم التصدير (${splitPoints.length-1} صفحات) بنجاح`, 'success');
+        showNotification(`تم التصدير (${totalPages} صفحات) بنجاح`, 'success');
         
     } catch (error) {
         console.error(error);
-        showNotification('حدث خطأ: ' + error.message, 'error');
+        showNotification('خطأ: ' + error.message, 'error');
     } finally {
         loading.remove();
         hideProgress();
-    }
-    
-    // دالة احتياطية بسيطة (تقسيم بالبكسل في حال عدم وجود صفوف)
-    function simpleSplit(canvas, invoiceNumber) {
-        const { jsPDF } = window.jspdf;
-        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
-        const margin = 8;
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const contentWidth = pdfWidth - (margin * 2);
-        const pdfHeight = pdf.internal.pageSize.getHeight();
-        const availableHeightMM = pdfHeight - (margin * 2);
-        const scaleX = contentWidth / canvas.width;
-        const overlapPx = 10;
-        const sliceHeightPx = (availableHeightMM / scaleX) + overlapPx;
-        const pages = Math.ceil(canvas.height / (availableHeightMM / scaleX));
-        for (let i = 0; i < pages; i++) {
-            if (i > 0) pdf.addPage();
-            let startY = i * (availableHeightMM / scaleX);
-            if (i > 0) startY = Math.max(0, startY - overlapPx);
-            let endY = Math.min(canvas.height, startY + sliceHeightPx);
-            const sliceCanvas = document.createElement('canvas');
-            sliceCanvas.width = canvas.width;
-            sliceCanvas.height = endY - startY;
-            const ctx = sliceCanvas.getContext('2d');
-            ctx.drawImage(canvas, 0, startY, canvas.width, endY - startY, 0, 0, sliceCanvas.width, sliceCanvas.height);
-            pdf.addImage(sliceCanvas.toDataURL('image/jpeg', 0.9), 'JPEG', margin, margin, contentWidth, (endY - startY) * scaleX);
-        }
-        pdf.save(`فاتورة-${invoiceNumber}.pdf`);
-        showNotification(`تم التصدير (${pages} صفحات)`, 'success');
     }
 }
 
