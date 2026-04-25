@@ -7426,3 +7426,14 @@ function setNewsTickerSpeed(seconds) {
 }
 
 window.initNewsBar = initNewsBar;
+
+function toggleNewsBar() {
+    const newsBar = document.getElementById('newsBar');
+    if (newsBar) {
+        if (newsBar.style.display === 'none') {
+            newsBar.style.display = 'flex';
+        } else {
+            newsBar.style.display = 'none';
+        }
+    }
+}
