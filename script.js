@@ -1727,6 +1727,13 @@ function updateUserInterface() {
 
     // ✅ بناء واجهة البحث المتقدم لكل المستخدمين (الدالة الداخلية ستقرر القائمة أو النص)
     buildInvoiceSearchUI();
+	
+	    // تحميل شريط الأخبار
+    if (currentUser) {
+        setTimeout(function() {
+            initNewsBar();
+        }, 1000);
+    }
 }
 
 window.showChangePassword = function() {
@@ -7418,3 +7425,5 @@ function initNewsBar() {
     newsBar.style.display = 'flex';
     loadNewsFromDrive();
 }
+
+window.initNewsBar = initNewsBar;
