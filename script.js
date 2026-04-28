@@ -1595,9 +1595,19 @@ function checkSession() {
             document.getElementById('loginScreen').style.display = 'none';
             document.getElementById('mainApp').style.display = 'block';
             updateUserInterface();
+            
+            // ✅ تحميل شريط الأخبار (ظاهر تلقائياً)
+            if (currentUser) {
+                setTimeout(() => {
+                    if (typeof initNewsBar === 'function') {
+                        initNewsBar();
+                    }
+                }, 1000);
+            }
+            
             addDatabaseControls();
 
-            // ✅ الخطوة 1: تحميل البيانات فوراً (بدون انتظار المؤقت)
+            // ✅ تحميل البيانات فوراً
             showNotification('جاري تحميل البيانات...', 'info');
             loadInvoicesFromDrive().then(() => {
                 console.log('✅ تم التحميل الأولي بنجاح');
@@ -1605,18 +1615,21 @@ function checkSession() {
                 console.error('❌ فشل التحميل الأولي:', err);
             });
 
-            // ✅ الخطوة 2: بدء المؤقت (بعد تعيين الإعدادات، لكن لا يمنع التحميل الأولي)
-            applyRefreshSetting();
+            // ✅ بدء التحديث التلقائي
+            if (typeof applyRefreshSetting === 'function') {
+                applyRefreshSetting();
+            }
 
-            // تحديث المستخدمين كل 5 دقائق للمدير (مستقل)
+            // ✅ تحديث المستخدمين كل 5 دقائق للمدير فقط
             if (currentUser.userType === 'admin') {
                 setInterval(async () => {
-                    if (currentUser?.userType === 'admin') {
+                    if (currentUser?.userType === 'admin' && typeof loadUsersFromDrive === 'function') {
                         await loadUsersFromDrive();
                     }
                 }, 5 * 60 * 1000);
             }
         } catch(e) {
+            console.error('خطأ في استعادة الجلسة:', e);
             sessionStorage.removeItem('currentUser');
         }
     }
@@ -7295,4 +7308,215 @@ window.manualRefresh = async function() {
 // عند تحميل الصفحة
 document.addEventListener('DOMContentLoaded', () => {
     loadRefreshSettings();
+});
+
+
+// ============================================
+// شريط الأخبار المتحرك المتطور (News Ticker)
+// ============================================
+const NEWS_FILE_ID = '1XOsN5gRzJtH0rY5Q020Z4J2j3Sb1_2Wk';
+const NEWS_CACHE_KEY = 'newsData';
+const NEWS_CACHE_TIME = 30 * 60 * 1000; // 30 دقيقة
+
+async function loadNewsFromDrive() {
+    const newsBar = document.getElementById('newsBar');
+    const newsContent = document.getElementById('newsTickerContent');
+    if (!newsBar || !newsContent) return;
+
+    // التحقق من حالة الرؤية المخزنة (افتراضي ظاهر)
+    const isVisible = localStorage.getItem(NEWS_VISIBLE_KEY) !== 'false';
+    if (!isVisible) {
+        newsBar.classList.add('hidden');
+        updateToggleButtonIcon(false);
+    } else {
+        newsBar.classList.remove('hidden');
+        updateToggleButtonIcon(true);
+    }
+
+    // التحقق من وجود بيانات مخزنة حديثة
+    const cached = localStorage.getItem(NEWS_CACHE_KEY);
+    if (cached) {
+        try {
+            const { data, timestamp } = JSON.parse(cached);
+            if (Date.now() - timestamp < NEWS_CACHE_TIME) {
+                displayNewsTicker(data);
+                newsBar.style.display = 'flex';
+                return;
+            }
+        } catch(e) {}
+    }
+
+    try {
+        const apiKey = driveConfig.apiKey || 'AIzaSyBy4WRI3zkUwlCvbrXpB8o9ZbFMuH4AdGA';
+        const url = `https://www.googleapis.com/drive/v3/files/${NEWS_FILE_ID}?alt=media&key=${apiKey}`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const content = await response.text();
+        
+        // تحويل النص إلى قائمة أخبار، مع تجاهل الأسطر التي تبدأ بـ # (تعليق)
+        let newsItems = content.split(/\r?\n/)
+            .map(line => line.trim())
+            .filter(line => line !== '' && !line.startsWith('#'));
+        
+        if (newsItems.length === 0) newsItems = ['مرحباً بك في نظام الفواتير المتقدم'];
+        
+        // تخزين مؤقت
+        localStorage.setItem(NEWS_CACHE_KEY, JSON.stringify({
+            data: newsItems,
+            timestamp: Date.now()
+        }));
+        
+        displayNewsTicker(newsItems);
+        newsBar.style.display = 'flex';
+        
+    } catch (error) {
+        console.error('خطأ في تحميل الأخبار:', error);
+        displayNewsTicker(['تعذر تحميل الأخبار، يرجى المحاولة لاحقاً']);
+        newsBar.style.display = 'flex';
+    }
+}
+
+function displayNewsTicker(newsItems) {
+    const container = document.getElementById('newsTickerContent');
+    if (!container) return;
+    
+    let html = '';
+    // نكرر الأخبار مرتين لإنشاء حلقة لا نهائية (لأننا نريد أن يمر المحتوى كاملاً ثم يعيد)
+    for (let repeat = 0; repeat < 2; repeat++) {
+        newsItems.forEach((item, idx) => {
+            // إضافة أيقونة مميزة لكل خبر (يمكن تغييرها حسب المحتوى)
+            let icon = 'fas fa-star';
+            if (item.includes('عاجل') || item.includes('هام')) icon = 'fas fa-bolt';
+            else if (item.includes('تحديث')) icon = 'fas fa-sync-alt';
+            else if (item.includes('جديد')) icon = 'fas fa-gift';
+            
+            html += `
+                <div class="news-item">
+                    <i class="${icon} news-icon"></i>
+                    <span>${escapeHtml(item)}</span>
+                </div>
+            `;
+            // إضافة فاصل مميز بين الأخبار (باستثناء آخر خبر)
+            if (idx < newsItems.length - 1) {
+                html += `<span class="news-separator">✦</span>`;
+            }
+        });
+        // إضافة فاصل طويل بين التكرارات (اختياري)
+        if (repeat === 0) {
+            html += `<span class="news-separator" style="margin:0 20px;">◆ ◆ ◆</span>`;
+        }
+    }
+    
+    container.innerHTML = html;
+    
+    // إعادة تعيين مدة الحركة حسب طول المحتوى (لتحسين السرعة)
+    const ticker = document.querySelector('.news-ticker');
+    if (ticker) {
+        const contentWidth = container.scrollWidth;
+        const speed = Math.max(20, Math.min(50, contentWidth / 50));
+        ticker.style.animationDuration = `${speed}s`;
+    }
+}
+
+// دالة مساعدة لتجنب XSS
+function escapeHtml(str) {
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    }).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, function(c) {
+        return c;
+    });
+}
+
+window.closeNewsBar = function() {
+    const newsBar = document.getElementById('newsBar');
+    if (newsBar) {
+        newsBar.style.display = 'none';
+        sessionStorage.setItem('newsClosed', 'true');
+    }
+};
+
+function shouldShowNews() {
+    return sessionStorage.getItem('newsClosed') !== 'true';
+}
+
+function toggleNewsBar() {
+    const newsBar = document.getElementById('newsBar');
+    const toggleBtn = document.getElementById('newsToggleBtn');
+    
+    if (!newsBar) return;
+    
+    if (newsBar.style.display === 'flex') {
+        newsBar.style.display = 'none';
+        localStorage.setItem('newsBarHidden', 'true');
+        if (toggleBtn) toggleBtn.innerHTML = '<i class="fas fa-newspaper"></i>';
+    } else {
+        newsBar.style.display = 'flex';
+        localStorage.setItem('newsBarHidden', 'false');
+        if (toggleBtn) toggleBtn.innerHTML = '<i class="fas fa-times"></i>';
+    }
+}
+
+// استعادة الحالة عند تحميل الصفحة
+function restoreNewsBarState() {
+    const newsBar = document.getElementById('newsBar');
+    if (!newsBar) return;
+    
+    // دائماً نعرض الشريط
+    newsBar.style.display = 'flex';
+    localStorage.setItem('newsBarHidden', 'false');
+}
+
+function initNewsBar() {
+    // تحميل الأخبار دون التحقق من حالة الإخفاء (نريدها ظاهرة دائماً)
+    loadNewsFromDrive();
+    
+    // التأكد من أن الشريط ظاهر
+    const newsBar = document.getElementById('newsBar');
+    if (newsBar) {
+        newsBar.style.display = 'flex';
+    }
+    
+    // إزالة أي تفضيلات سابقة للإخفاء
+    localStorage.removeItem('newsBarHidden');
+}
+
+
+
+// تسجيل Service Worker (أضف هذا الكود في بداية script.js أو بعد تحميل الصفحة)
+
+async function registerServiceWorker() {
+    // التحقق من أن المتصفح يدعم Service Workers
+    if (!('serviceWorker' in navigator)) {
+        console.warn('⚠️ متصفحك لا يدعم Service Workers، لن تعمل الإشعارات');
+        return false;
+    }
+
+    // التحقق من أن المتصفح يدعم Push API
+    if (!('PushManager' in window)) {
+        console.warn('⚠️ متصفحك لا يدعم Push API، لن تعمل الإشعارات');
+        return false;
+    }
+
+    try {
+        // تسجيل Service Worker
+        const registration = await navigator.serviceWorker.register('/sw.js');
+        console.log('✅ Service Worker تم تسجيله بنجاح', registration);
+        
+        // انتظار تفعيل Service Worker
+        await navigator.serviceWorker.ready;
+        console.log('✅ Service Worker جاهز للاستخدام');
+        
+        return registration;
+    } catch (error) {
+        console.error('❌ فشل تسجيل Service Worker:', error);
+        return false;
+    }
+}
+
+// تشغيل التسجيل عند تحميل الصفحة
+document.addEventListener('DOMContentLoaded', () => {
+    registerServiceWorker();
 });
