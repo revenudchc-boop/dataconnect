@@ -76,7 +76,7 @@ let driveConfig = {
     creditFileName: 'creditdata.txt',
     creditFileId: '1WU9R9Yby0_QoJeulIgYRuCQk9XV-N_e1',
     infoFileName: 'invoice-info.json',
-    infoFileId: '1k8cB14gf4V9zLLo-Q1wjdJnpduoR0eLt'
+    infoFileId: '1cgi5kRhAUlkGVgw5ClSqGG8x_Kg8PoJf'
 };
 
 // إصلاح Service Worker - تشغيل فوري
@@ -7691,7 +7691,6 @@ async function setupNotifications() {
 // نظام الإشعارات التلقائية للفواتير الجديدة - النسخة النهائية
 // ============================================
 
-// دالة للتحقق من الفواتير الجديدة وإرسال إشعار تلقائي
 // دالة للتحقق من الفواتير الجديدة وإرسال إشعار تلقائي
 async function checkNewInvoicesAndNotify() {
     // التأكد من وجود فواتير ومستخدم مسجل
