@@ -23,6 +23,12 @@ const INVOICE_TYPES = {
 };
 let currentInvoiceType = INVOICE_TYPES.CASH;
 
+// ============================================
+// إعدادات البريد الإلكتروني
+// ============================================
+const RESEND_API_KEY = 're_HHqtAEPV_HsVrpgPW23KRXzuLGkY8knzm';
+const ADMIN_EMAIL = 'revenudchc@gmail.com';
+
 // المتغيرات العامة
 let invoicesData = [];
 let filteredInvoices = [];
@@ -7692,6 +7698,10 @@ async function setupNotifications() {
 // ============================================
 
 // دالة للتحقق من الفواتير الجديدة وإرسال إشعار تلقائي
+// ============================================
+// نظام الإشعارات التلقائية للفواتير الجديدة
+// ============================================
+
 async function checkNewInvoicesAndNotify() {
     // التأكد من وجود فواتير ومستخدم مسجل
     if (!invoicesData || invoicesData.length === 0) {
@@ -7724,7 +7734,7 @@ async function checkNewInvoicesAndNotify() {
     if (newCount > 0) {
         console.log(`🆕 اكتشاف ${newCount} فواتير جديدة!`);
         
-        // إرسال إشعار للمستخدم إذا كان مصرحاً بذلك
+        // ========== 1. إشعار المتصفح ==========
         if (Notification.permission === 'granted') {
             try {
                 const notification = new Notification('📄 فواتير جديدة', {
@@ -7735,32 +7745,53 @@ async function checkNewInvoicesAndNotify() {
                     tag: 'new-invoices'
                 });
                 
-                // عند الضغط على الإشعار، افتح الصفحة
                 notification.onclick = function() {
                     window.focus();
                     notification.close();
                 };
                 
-                console.log('✅ تم إرسال الإشعار بنجاح');
+                console.log('✅ تم إرسال إشعار المتصفح بنجاح');
             } catch(e) {
-                console.error('❌ فشل إرسال الإشعار:', e);
+                console.error('❌ فشل إرسال إشعار المتصفح:', e);
             }
         } else {
-            console.log(`⚠️ لا يمكن إرسال الإشعار - حالة الإذن: ${Notification.permission}`);
+            console.log(`⚠️ لا يمكن إرسال إشعار المتصفح - حالة الإذن: ${Notification.permission}`);
         }
         
-        // تحديث العدد المسجل في التخزين المحلي
+        // ========== 2. إرسال إيميل ==========
+        if (typeof sendEmailNotification === 'function') {
+            try {
+                await sendEmailNotification(
+                    ADMIN_EMAIL,
+                    `📄 ${newCount} فواتير جديدة`,
+                    `<h2>📄 فواتير جديدة</h2>
+                     <p>تم إضافة ${newCount} فواتير جديدة إلى النظام.</p>
+                     <p><strong>العدد الإجمالي:</strong> ${currentCount} فاتورة</p>
+                     <p><strong>عدد الفواتير الجديدة:</strong> ${newCount}</p>
+                     <p>يرجى تسجيل الدخول لعرضها:</p>
+                     <a href="https://revenudchc-boop.github.io/dataconnect/">👉 رابط النظام</a>
+                     <hr>
+                     <p style="color: #666; font-size: 12px;">تم الإرسال تلقائياً من نظام الفواتير - ${new Date().toLocaleString('ar-EG')}</p>`
+                );
+                console.log('✅ تم إرسال الإيميل بنجاح');
+            } catch(e) {
+                console.error('❌ فشل إرسال الإيميل:', e);
+            }
+        }
+        
+        // ========== 3. تحديث العدد المسجل ==========
         localStorage.setItem('lastInvoiceCount', currentCount);
         
-        // ✅ مزامنة العدد الجديد مع Drive و Cloudflare (باستخدام syncInvoiceCount)
+        // ========== 4. مزامنة العدد مع Drive و Cloudflare ==========
         if (typeof syncInvoiceCount === 'function') {
             await syncInvoiceCount();
         }
         
-        // عرض إشعار داخلي للمستخدم (في واجهة الموقع)
+        // ========== 5. إشعار داخلي في الموقع ==========
         if (typeof showNotification === 'function') {
             showNotification(`📢 يوجد ${newCount} فواتير جديدة`, 'info');
         }
+        
     } else {
         console.log('✅ لا توجد فواتير جديدة');
     }
@@ -8042,5 +8073,35 @@ async function loadInitialInvoiceCount() {
         console.log('📊 تم تحميل العدد المسجل من Drive:', info.count);
     } else {
         console.log('⚠️ لم يتم العثور على عدد مسجل في Drive');
+    }
+}
+
+// ============================================
+// إرسال إيميل عند إضافة فواتير جديدة
+// ============================================
+async function sendEmailNotification(to, subject, html) {
+    try {
+        const response = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${RESEND_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                from: 'نظام الفواتير <onboarding@resend.dev>',
+                to: [to],
+                subject: subject,
+                html: html
+            })
+        });
+        
+        if (response.ok) {
+            console.log('✅ تم إرسال الإيميل بنجاح');
+        } else {
+            const error = await response.text();
+            console.error('❌ فشل إرسال الإيميل:', error);
+        }
+    } catch (error) {
+        console.error('❌ خطأ في الإرسال:', error);
     }
 }
