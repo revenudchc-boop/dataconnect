@@ -7977,11 +7977,20 @@ async function writeInvoiceCountToDrive(count) {
         }
     }
     
-    // ✅ المحتوى هو الرقم فقط كنص
-    const content = count.toString();
-    
+    // ✅ نفس طريقة saveViewedToDrive: قراءة الملف أولاً ثم تحديثه
     try {
-        const response = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveConfig.infoFileId}?uploadType=media`, {
+        // 1. قراءة المحتوى الحالي (للتأكد من وجود الملف)
+        const readResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${driveConfig.infoFileId}?alt=media`, {
+            headers: { 'Authorization': `Bearer ${driveAccessToken}` }
+        });
+        
+        if (!readResponse.ok) {
+            throw new Error(`فشل قراءة الملف: ${readResponse.status}`);
+        }
+        
+        // 2. كتابة المحتوى الجديد (نفس طريقة saveViewedToDrive)
+        const content = count.toString();
+        const saveResponse = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveConfig.infoFileId}?uploadType=media`, {
             method: 'PATCH',
             headers: {
                 'Authorization': `Bearer ${driveAccessToken}`,
@@ -7990,11 +7999,11 @@ async function writeInvoiceCountToDrive(count) {
             body: content
         });
         
-        if (response.ok) {
-            console.log('✅ تم حفظ عدد الفواتير في Drive (TXT):', count);
+        if (saveResponse.ok) {
+            console.log('✅ تم حفظ عدد الفواتير في Drive (مثل viewed data):', count);
             return true;
         } else {
-            const errorText = await response.text();
+            const errorText = await saveResponse.text();
             console.error('❌ فشل الحفظ:', errorText);
             return false;
         }
