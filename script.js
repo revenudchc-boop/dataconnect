@@ -7767,3 +7767,23 @@ function requestNotificationPermission() {
         });
     }
 }
+
+// دالة لإعادة طلب الإذن
+async function requestNotificationAgain() {
+    if (Notification.permission === 'denied') {
+        console.log('⚠️ الإشعارات محظورة. يرجى تفعيلها من إعدادات المتصفح');
+        
+        // محاولة طلب الإذن مرة أخرى (قد لا تعمل إذا كان محظوراً)
+        const permission = await Notification.requestPermission();
+        console.log('حالة الإذن بعد المحاولة:', permission);
+        
+        if (permission === 'granted') {
+            new Notification('✅ تم التفعيل', {
+                body: 'الإشعارات تعمل الآن'
+            });
+        }
+    }
+}
+
+// استدعاء الدالة
+requestNotificationAgain();
