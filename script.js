@@ -7761,3 +7761,35 @@ function requestNotificationPermission() {
         });
     }
 }
+
+// ============================================
+// إصلاح الأخطاء السريع
+// ============================================
+
+// 1. تعريف المتغير المفقود
+const NEWS_VISIBLE_KEY = 'newsVisible';
+
+// 2. تعريف دالة subscribeToPush (نسخة مبسطة)
+async function subscribeToPush() {
+    console.log('📢 Push Notifications - سيتم تفعيلها لاحقاً');
+    return false;
+}
+
+// 3. إصلاح دالة setupNotifications
+async function setupNotifications() {
+    if (!('serviceWorker' in navigator)) return;
+    try {
+        const registration = await navigator.serviceWorker.ready;
+        console.log('✅ Service Worker جاهز للإشعارات');
+        
+        // طلب الإذن إذا لم يكن محدداً
+        if (Notification.permission === 'default') {
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+                console.log('✅ تم تفعيل الإشعارات');
+            }
+        }
+    } catch (error) {
+        console.error('❌ خطأ في الإشعارات:', error);
+    }
+}
