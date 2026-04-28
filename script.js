@@ -8080,6 +8080,10 @@ async function loadInitialInvoiceCount() {
 // إرسال الإيميلات عبر Cloudflare Worker
 // ============================================
 
+// ============================================
+// إرسال الإيميلات عبر Cloudflare Worker
+// ============================================
+
 async function sendEmailNotification(to, subject, html) {
     try {
         const response = await fetch('https://invoice-notifier.revenudchc.workers.dev/api/send-email', {
@@ -8096,16 +8100,12 @@ async function sendEmailNotification(to, subject, html) {
     }
 }
 
-// دالة اختبار سريع للإيميل
+// دالة اختبار
 async function testEmail() {
     const result = await sendEmailNotification(
         'revenudchc@gmail.com',
         '🧪 اختبار نظام الفواتير',
-        '<h1>✅ نجح الإعداد!</h1><p>الإيميل يعمل من خلال Cloudflare Worker.</p><p>الوقت: ' + new Date().toLocaleString('ar-EG') + '</p>'
+        '<h1>✅ نجح الإعداد!</h1><p>الإيميل يعمل من خلال Cloudflare Worker.</p>'
     );
-    if (result) {
-        console.log('✅ تم إرسال الإيميل، تحقق من بريدك');
-    } else {
-        console.log('❌ فشل إرسال الإيميل');
-    }
+    console.log(result ? '✅ تم إرسال الإيميل' : '❌ فشل الإرسال');
 }
