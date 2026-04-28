@@ -5588,6 +5588,8 @@ async function loadInvoicesFromDrive() {
         }
 
         if (!newInvoices.length) throw new Error('لا توجد فواتير');
+        
+        const oldCount = invoicesData.length;
         invoicesData = newInvoices;
         showProgress('تم التحميل', 100);
         
@@ -5603,9 +5605,20 @@ async function loadInvoicesFromDrive() {
         // تحديث واجهة المستخدم مرة أخيرة
         renderData();
         
-        // ✅ التحقق من الفواتير الجديدة وإرسال إشعار (الإضافة الجديدة)
+        // ✅ التحقق من الفواتير الجديدة وإرسال إشعار
         if (typeof checkNewInvoicesAndNotify === 'function') {
             await checkNewInvoicesAndNotify();
+        }
+        
+        // ✅ مزامنة عدد الفواتير مع Cloudflare Worker (للإشعارات عند إغلاق المتصفح)
+        if (typeof syncInvoiceCount === 'function' && invoicesData.length !== oldCount) {
+            await syncInvoiceCount();
+            console.log('📤 تم مزامنة العدد الجديد مع الخادم:', invoicesData.length);
+        }
+        
+        // ✅ تحديث ملف invoice-info.json محلياً (سيتم إرساله إلى الخادم)
+        if (typeof updateInvoiceInfo === 'function') {
+            await updateInvoiceInfo();
         }
         
         // بعد تحميل العلامات وتحديث الجدول
@@ -7787,3 +7800,48 @@ async function requestNotificationAgain() {
 
 // استدعاء الدالة
 requestNotificationAgain();
+
+// دالة تحديث معلومات الفواتير للمزامنة مع Cloudflare
+async function updateInvoiceInfo() {
+    try {
+        const info = {
+            count: invoicesData.length,
+            lastUpdated: new Date().toISOString(),
+            fileSize: JSON.stringify(invoicesData).length
+        };
+        
+        // تخزين محلياً
+        localStorage.setItem('invoiceInfo', JSON.stringify(info));
+        
+        // إرسال إلى Cloudflare Worker إذا كان متاحاً
+        if (typeof syncInvoiceCount === 'function') {
+            await syncInvoiceCount();
+        }
+    } catch(e) { 
+        console.error('فشل تحديث معلومات الفواتير:', e); 
+    }
+}
+
+// دالة مزامنة العدد مع Cloudflare Worker
+async function syncInvoiceCount() {
+    if (!invoicesData) return;
+    
+    try {
+        // ✅ استخدم الرابط الخاص بك (وليس your-username)
+        const WORKER_URL = 'https://invoice-notifier.revenudchc.workers.dev';
+        
+        const response = await fetch(`${WORKER_URL}/api/update-count`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ count: invoicesData.length })
+        });
+        
+        if (response.ok) {
+            console.log('✅ تم مزامنة عدد الفواتير مع الخادم:', invoicesData.length);
+        } else {
+            console.log('⚠️ فشل المزامنة - رمز الخطأ:', response.status);
+        }
+    } catch (error) {
+        console.error('❌ فشل المزامنة مع الخادم:', error);
+    }
+}
