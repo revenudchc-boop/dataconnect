@@ -75,6 +75,10 @@ let driveConfig = {
     logoFileId: '1DugYxs9a21e6J0ynTu6pE0yHXM2wRXSP',
     creditFileName: 'creditdata.txt',                // ← تم التغيير
     creditFileId: '1WU9R9Yby0_QoJeulIgYRuCQk9XV-N_e1' // ← تم الإضافة
+	    // ✅ أضف هذين السطرين
+    infoFileName: 'invoice-info.json',
+    infoFileId: '1k8cB14gf4V9zLLo-Q1wjdJnpduoR0eLt'
+
 };
 
 // إصلاح Service Worker - تشغيل فوري
@@ -5593,6 +5597,9 @@ async function loadInvoicesFromDrive() {
         invoicesData = newInvoices;
         showProgress('تم التحميل', 100);
         
+        // ✅ تحميل العدد المسجل من Drive
+        await loadInitialInvoiceCount();
+        
         // ✅ تطبيق تصفية المستخدم أولاً
         currentUser?.isGuest ? filterInvoicesByGuest(currentUser.taxNumber, currentUser.blNumber) : filterInvoicesByUser();
         
@@ -5610,11 +5617,8 @@ async function loadInvoicesFromDrive() {
             await checkNewInvoicesAndNotify();
         }
         
-        // ✅ مزامنة عدد الفواتير مع Cloudflare Worker (للإشعارات عند إغلاق المتصفح)
-        if (typeof syncInvoiceCount === 'function' && invoicesData.length !== oldCount) {
-            await syncInvoiceCount();
-            console.log('📤 تم مزامنة العدد الجديد مع الخادم:', invoicesData.length);
-        }
+        // ✅ مزامنة العدد الجديد مع Drive و Cloudflare
+        await syncInvoiceCount();
         
         // ✅ تحديث ملف invoice-info.json محلياً (سيتم إرساله إلى الخادم)
         if (typeof updateInvoiceInfo === 'function') {
@@ -7723,12 +7727,15 @@ async function checkNewInvoicesAndNotify() {
     if (newCount > 0) {
         console.log(`🆕 اكتشاف ${newCount} فواتير جديدة!`);
         
-        // ✅ إرسال إشعار للمستخدم - نسخة مبسطة ومضمونة
+        // إرسال إشعار للمستخدم إذا كان مصرحاً بذلك
         if (Notification.permission === 'granted') {
             try {
-                // نسخة مبسطة بدون icon وبدون خيارات إضافية
                 const notification = new Notification('📄 فواتير جديدة', {
-                    body: `تم إضافة ${newCount} فواتير جديدة إلى النظام. يرجى معاينتها.`
+                    body: `تم إضافة ${newCount} فواتير جديدة إلى النظام. يرجى معاينتها.`,
+                    icon: 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
+                    requireInteraction: true,
+                    silent: false,
+                    tag: 'new-invoices'
                 });
                 
                 // عند الضغط على الإشعار، افتح الصفحة
@@ -7747,6 +7754,11 @@ async function checkNewInvoicesAndNotify() {
         
         // تحديث العدد المسجل في التخزين المحلي
         localStorage.setItem('lastInvoiceCount', currentCount);
+        
+        // ✅ مزامنة العدد الجديد مع Drive و Cloudflare (باستخدام syncInvoiceCount)
+        if (typeof syncInvoiceCount === 'function') {
+            await syncInvoiceCount();
+        }
         
         // عرض إشعار داخلي للمستخدم (في واجهة الموقع)
         if (typeof showNotification === 'function') {
@@ -7918,4 +7930,105 @@ if (currentUser) {
     setTimeout(() => {
         subscribeToPush();
     }, 3000);
+}
+
+// ============================================
+// دوال إدارة عدد الفواتير على Drive
+// ============================================
+
+// قراءة عدد الفواتير من Drive
+async function readInvoiceCountFromDrive() {
+    if (!driveConfig.infoFileId) {
+        console.log('⚠️ infoFileId غير متوفر');
+        return null;
+    }
+    
+    try {
+        const url = `https://www.googleapis.com/drive/v3/files/${driveConfig.infoFileId}?alt=media&key=${driveConfig.apiKey}`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        console.log('📊 تم قراءة العدد من Drive:', data.count);
+        return data;
+    } catch (error) {
+        console.error('❌ فشل قراءة عدد الفواتير من Drive:', error);
+        return null;
+    }
+}
+
+// كتابة عدد الفواتير إلى Drive
+async function writeInvoiceCountToDrive(count) {
+    if (!driveConfig.infoFileId) {
+        console.log('⚠️ infoFileId غير متوفر');
+        return false;
+    }
+    
+    if (!driveAccessToken) {
+        try {
+            await refreshAccessToken();
+        } catch (error) {
+            console.error('❌ فشل تجديد التوكن:', error);
+            return false;
+        }
+    }
+    
+    const info = {
+        count: count,
+        lastUpdated: new Date().toISOString()
+    };
+    
+    try {
+        const response = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveConfig.infoFileId}?uploadType=media`, {
+            method: 'PATCH',
+            headers: {
+                'Authorization': `Bearer ${driveAccessToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(info)
+        });
+        
+        if (response.ok) {
+            console.log('✅ تم حفظ عدد الفواتير في Drive:', count);
+            return true;
+        } else {
+            const errorText = await response.text();
+            console.error('❌ فشل الحفظ:', errorText);
+            return false;
+        }
+    } catch (error) {
+        console.error('❌ خطأ في الحفظ:', error);
+        return false;
+    }
+}
+
+// مزامنة العدد مع Drive و Cloudflare
+async function syncInvoiceCount() {
+    if (!invoicesData) return;
+    const count = invoicesData.length;
+    
+    console.log('🔄 جاري مزامنة العدد:', count);
+    await writeInvoiceCountToDrive(count);
+    
+    try {
+        const WORKER_URL = 'https://invoice-notifier.revenudchc.workers.dev';
+        await fetch(`${WORKER_URL}/api/update-count`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ count: count })
+        });
+        console.log('✅ تم مزامنة العدد مع Cloudflare:', count);
+    } catch(e) {
+        console.error('❌ فشل المزامنة مع Cloudflare:', e);
+    }
+}
+
+// تحميل العدد المسجل من Drive عند بدء التشغيل
+async function loadInitialInvoiceCount() {
+    const info = await readInvoiceCountFromDrive();
+    if (info && info.count) {
+        localStorage.setItem('lastInvoiceCount', info.count);
+        console.log('📊 تم تحميل العدد المسجل من Drive:', info.count);
+    } else {
+        console.log('⚠️ لم يتم العثور على عدد مسجل في Drive');
+    }
 }
