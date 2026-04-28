@@ -77,6 +77,27 @@ let driveConfig = {
     creditFileId: '1WU9R9Yby0_QoJeulIgYRuCQk9XV-N_e1' // ← تم الإضافة
 };
 
+// إصلاح Service Worker - تشغيل فوري
+(function fixServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
+    
+    // 1. إلغاء أي Service Worker قديم
+    navigator.serviceWorker.getRegistrations().then(registrations => {
+        registrations.forEach(registration => {
+            if (registration.active && registration.active.scriptURL.includes('/sw.js')) {
+                console.log('🗑️ إلغاء التسجيل القديم');
+                registration.unregister();
+            }
+        });
+    });
+    
+    // 2. تسجيل المسار الصحيح
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/dataconnect/sw.js')
+            .then(reg => console.log('✅ Service Worker مسجل من المسار الصحيح'))
+            .catch(err => console.error('❌ فشل التسجيل:', err));
+    });
+})();
 // متغيرات التقارير
 let currentReportType = 'daily';
 
@@ -7510,7 +7531,7 @@ function initNewsBar() {
 async function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return false;
     try {
-        // ✅ غيّر المسار من '/sw.js' إلى '/dataconnect/sw.js'
+        // ✅ تغيير المسار هنا
         const registration = await navigator.serviceWorker.register('/dataconnect/sw.js');
         console.log('✅ Service Worker تم تسجيله بنجاح', registration);
         return registration;
@@ -7633,22 +7654,18 @@ async function initNotifications() {
 
 // تشغيل تهيئة الإشعارات عند تحميل الصفحة (بعد تسجيل الدخول)
 async function setupNotifications() {
-    // تسجيل Service Worker إذا لم يكن مسجلاً
     if ('serviceWorker' in navigator) {
         try {
-            let registration = await navigator.serviceWorker.getRegistration();
+            let registration = await navigator.serviceWorker.getRegistration('/dataconnect/sw.js');
             if (!registration) {
-                // ✅ استخدم المسار الصحيح هنا أيضاً
                 registration = await navigator.serviceWorker.register('/dataconnect/sw.js');
-                console.log('✅ Service Worker مسجل من setupNotifications');
             }
+            console.log('✅ Service Worker جاهز');
+            await subscribeToPush();
         } catch (error) {
-            console.error('❌ فشل تسجيل Service Worker:', error);
+            console.error('❌ فشل الإعداد:', error);
         }
     }
-    
-    // الاشتراك في الإشعارات
-    await subscribeToPush();
 }
 
 // ============================================
