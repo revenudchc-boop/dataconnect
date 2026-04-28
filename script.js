@@ -1651,20 +1651,11 @@ function checkSession() {
             }
             
             // ✅ طلب إذن الإشعارات (مرة واحدة فقط)
-            setTimeout(() => {
-                if (Notification.permission === 'default') {
-                    Notification.requestPermission().then(permission => {
-                        if (permission === 'granted') {
-                            console.log('✅ تم منح الإذن للإشعارات');
-                            // إشعار ترحيبي بسيط
-                            new Notification('✅ نظام الفواتير', {
-                                body: 'تم تفعيل الإشعارات، سيتم إعلامك بالفواتير الجديدة',
-                                icon: 'https://revenudchc-boop.github.io/dataconnect/logo.png'
-                            });
-                        }
-                    });
-                }
-            }, 2000);
+            if (typeof requestNotificationPermission === 'function') {
+                setTimeout(() => {
+                    requestNotificationPermission();
+                }, 2000);
+            }
             
             // ✅ إعداد الإشعارات الفورية (Push Notifications)
             if (typeof setupNotifications === 'function') {
@@ -5617,17 +5608,21 @@ async function loadInvoicesFromDrive() {
             await checkNewInvoicesAndNotify();
         }
         
-		// بعد تحميل العلامات وتحديث الجدول
-		setTimeout(() => {
-			checkUnviewedInvoicesAndShowReport();
-		}, 500);
+        // بعد تحميل العلامات وتحديث الجدول
+        setTimeout(() => {
+            checkUnviewedInvoicesAndShowReport();
+        }, 500);
+        
         document.getElementById('fileStatus').innerHTML = `<i class="fas fa-check-circle"></i> ✅ تم تحميل ${formatNumberWithCommas(invoicesData.length)} فاتورة من Drive`;
         updateDataSource();
         return true;
+        
     } catch (error) {
         showNotification(`❌ خطأ: ${error.message}`, 'error');
         return false;
-    } finally { setTimeout(hideProgress, 1500); }
+    } finally { 
+        setTimeout(hideProgress, 1500); 
+    }
 }
 
 window.updateFromDrive = async function() {
@@ -7678,15 +7673,16 @@ async function setupNotifications() {
 }
 
 // ============================================
-// نظام الإشعارات التلقائي للفواتير الجديدة
+// نظام الإشعارات التلقائية للفواتير الجديدة - النسخة النهائية
 // ============================================
 
-// دالة للتحقق من الفواتير الجديدة وإرسال إشعار
+// دالة للتحقق من الفواتير الجديدة وإرسال إشعار تلقائي
 async function checkNewInvoicesAndNotify() {
-    // التأكد من وجود فواتير
+    // التأكد من وجود فواتير ومستخدم مسجل
     if (!invoicesData || invoicesData.length === 0) return;
+    if (!currentUser) return;
     
-    // جلب آخر عدد فواتير مسجل
+    // جلب آخر عدد فواتير مسجل من التخزين المحلي
     const lastInvoiceCount = localStorage.getItem('lastInvoiceCount');
     const currentCount = invoicesData.length;
     
@@ -7697,26 +7693,29 @@ async function checkNewInvoicesAndNotify() {
         return;
     }
     
-    // إذا كان هناك فواتير جديدة
-    if (currentCount > parseInt(lastInvoiceCount)) {
-        const newCount = currentCount - parseInt(lastInvoiceCount);
-        
+    // حساب عدد الفواتير الجديدة
+    const oldCount = parseInt(lastInvoiceCount);
+    const newCount = currentCount - oldCount;
+    
+    // إذا تم العثور على فواتير جديدة
+    if (newCount > 0) {
         console.log(`🆕 اكتشاف ${newCount} فواتير جديدة!`);
         
-        // إرسال إشعار بالمتصفح إذا كان مسموحاً
+        // إرسال إشعار للمستخدم إذا كان مصرحاً بذلك
         if (Notification.permission === 'granted') {
             try {
                 const notification = new Notification('📄 فواتير جديدة', {
-                    body: `تم إضافة ${newCount} فواتير جديدة. يرجى معاينتها.`,
-                    icon: 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png', // صورة عامة (تجنب 404)
+                    body: `تم إضافة ${newCount} فواتير جديدة إلى النظام. يرجى معاينتها.`,
+                    icon: 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
                     requireInteraction: true,
-                    silent: false
+                    silent: false,
+                    tag: 'new-invoices'
                 });
                 
-                // عند الضغط على الإشعار، افتح صفحة الفواتير
+                // عند الضغط على الإشعار، افتح الصفحة ونشطها
                 notification.onclick = function() {
                     window.focus();
-                    // يمكنك إضافة توجيه إلى صفحة الفواتير هنا
+                    notification.close();
                 };
                 
                 console.log('✅ تم إرسال الإشعار بنجاح');
@@ -7725,71 +7724,46 @@ async function checkNewInvoicesAndNotify() {
             }
         }
         
-        // تحديث العدد المسجل
+        // تحديث العدد المسجل في التخزين المحلي
         localStorage.setItem('lastInvoiceCount', currentCount);
+        
+        // عرض إشعار داخلي للمستخدم (في واجهة الموقع)
+        showNotification(`📢 يوجد ${newCount} فواتير جديدة`, 'info');
     }
 }
 
-// دالة لإعادة تعيين عداد الفواتير (يمكن استدعاؤها يدوياً)
+// دالة لإعادة تعيين عداد الفواتير (يمكن للمدير استخدامها)
 function resetInvoiceCounter() {
     if (invoicesData && invoicesData.length) {
         localStorage.setItem('lastInvoiceCount', invoicesData.length);
         console.log('🔄 تم إعادة تعيين العداد إلى:', invoicesData.length);
+        showNotification('تم إعادة تعيين عداد الفواتير', 'success');
     } else {
         localStorage.removeItem('lastInvoiceCount');
-        console.log('🔄 تم مسح العداد');
+        console.log('🔄 تم مسح عداد الفواتير');
     }
 }
 
-// دالة لطلب إذن الإشعارات (تستدعى عند تحميل الصفحة)
+// دالة طلب إذن الإشعارات (تظهر مرة واحدة فقط)
 function requestNotificationPermission() {
     if (!("Notification" in window)) {
         console.log("⚠️ المتصفح لا يدعم الإشعارات");
         return;
     }
     
+    // إذا كان الإذن لم يحدد بعد (default)، اطلبه من المستخدم
     if (Notification.permission === "default") {
         Notification.requestPermission().then(function(permission) {
             if (permission === "granted") {
                 console.log("✅ تم تفعيل الإشعارات");
                 // إشعار ترحيبي
-                new Notification("✅ تم تفعيل الإشعارات", {
-                    body: "سيتم إعلامك عند وجود فواتير جديدة",
+                new Notification("✅ نظام الفواتير", {
+                    body: "تم تفعيل الإشعارات بنجاح. سيتم إعلامك عند وجود فواتير جديدة.",
                     icon: "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
                 });
+            } else {
+                console.log("❌ لم يتم تفعيل الإشعارات");
             }
         });
-    }
-}
-
-// ============================================
-// إصلاح الأخطاء السريع
-// ============================================
-
-// 1. تعريف المتغير المفقود
-const NEWS_VISIBLE_KEY = 'newsVisible';
-
-// 2. تعريف دالة subscribeToPush (نسخة مبسطة)
-async function subscribeToPush() {
-    console.log('📢 Push Notifications - سيتم تفعيلها لاحقاً');
-    return false;
-}
-
-// 3. إصلاح دالة setupNotifications
-async function setupNotifications() {
-    if (!('serviceWorker' in navigator)) return;
-    try {
-        const registration = await navigator.serviceWorker.ready;
-        console.log('✅ Service Worker جاهز للإشعارات');
-        
-        // طلب الإذن إذا لم يكن محدداً
-        if (Notification.permission === 'default') {
-            const permission = await Notification.requestPermission();
-            if (permission === 'granted') {
-                console.log('✅ تم تفعيل الإشعارات');
-            }
-        }
-    } catch (error) {
-        console.error('❌ خطأ في الإشعارات:', error);
     }
 }
