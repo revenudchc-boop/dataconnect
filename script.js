@@ -1628,6 +1628,14 @@ function checkSession() {
                     }
                 }, 5 * 60 * 1000);
             }
+            
+            // ✅ إعداد الإشعارات الفورية (Push Notifications)
+            if (typeof setupNotifications === 'function') {
+                setTimeout(() => {
+                    setupNotifications();
+                }, 3000);
+            }
+            
         } catch(e) {
             console.error('خطأ في استعادة الجلسة:', e);
             sessionStorage.removeItem('currentUser');
@@ -7519,4 +7527,119 @@ async function registerServiceWorker() {
 // تشغيل التسجيل عند تحميل الصفحة
 document.addEventListener('DOMContentLoaded', () => {
     registerServiceWorker();
-});
+});	
+
+
+// ============================================
+// إعدادات الإشعارات الفورية
+// ============================================
+
+// رابط الـ Worker الخاص بك - غيّره إلى الرابط الحقيقي
+const WORKER_URL = 'https://notification-worker.your-username.workers.dev'; // ⚠️ غيّر هذا
+
+// دالة تحويل المفتاح Base64 إلى Uint8Array (لازمة لـ VAPID مؤقتاً)
+function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+}
+
+// دالة تسجيل الاشتراك في الإشعارات
+async function subscribeToPushNotifications() {
+    // التحقق من دعم المتصفح
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        console.log('⚠️ المتصفح لا يدعم الإشعارات الفورية');
+        return false;
+    }
+    
+    try {
+        // طلب إذن المستخدم
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+            console.log('❌ المستخدم رفض الإشعارات');
+            return false;
+        }
+        
+        // انتظار Service Worker
+        const registration = await navigator.serviceWorker.ready;
+        
+        // مفتاح VAPID مؤقت للتجربة (سنستبدله لاحقاً بمفتاح حقيقي)
+        const VAPID_PUBLIC_KEY = 'BFnReKZQqTjYk7y8x7n9mXo2LhV4GcJkLpQwErTyUiOpAsDfGhJkLzXcVbNmQwErTyUiOpAsDfG';
+        
+        // إنشاء اشتراك
+        const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+        });
+        
+        // إرسال الاشتراك إلى الـ Worker
+        const response = await fetch(`${WORKER_URL}/api/subscribe`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(subscription)
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+            console.log('✅ تم الاشتراك في الإشعارات بنجاح');
+            return true;
+        } else {
+            console.log('❌ فشل الاشتراك:', result.message);
+            return false;
+        }
+    } catch (error) {
+        console.error('❌ خطأ في الاشتراك:', error);
+        return false;
+    }
+}
+
+// دالة إرسال إشعار تجريبي (تستدعى يدوياً للاختبار)
+async function sendTestNotification() {
+    try {
+        const response = await fetch(`${WORKER_URL}/api/test-notification`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const result = await response.json();
+        console.log('📨 نتيجة إرسال الإشعار:', result);
+        return result;
+    } catch (error) {
+        console.error('❌ خطأ:', error);
+    }
+}
+
+// تهيئة الإشعارات (تستدعى عند تحميل الصفحة)
+async function initNotifications() {
+    // التحقق من وجود Service Worker أولاً
+    if (!('serviceWorker' in navigator)) return;
+    
+    // تسجيل Service Worker إذا لم يكن مسجلاً
+    if (!navigator.serviceWorker.controller) {
+        try {
+            await navigator.serviceWorker.register('/sw.js');
+            console.log('✅ Service Worker مسجل');
+        } catch (error) {
+            console.error('❌ فشل تسجيل Service Worker:', error);
+            return;
+        }
+    }
+    
+    // الاشتراك في الإشعارات
+    await subscribeToPushNotifications();
+}
+
+// تشغيل تهيئة الإشعارات عند تحميل الصفحة (بعد تسجيل الدخول)
+function setupNotifications() {
+    if (currentUser) {
+        setTimeout(() => {
+            initNotifications();
+        }, 2000);
+    }
+}
