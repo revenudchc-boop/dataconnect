@@ -73,12 +73,10 @@ let driveConfig = {
     usersFileName: 'users.json',
     usersFileId: '1-ktLLXz1Febs44lB-aqfuNmTRs1GNB0w',
     logoFileId: '1DugYxs9a21e6J0ynTu6pE0yHXM2wRXSP',
-    creditFileName: 'creditdata.txt',                // ← تم التغيير
-    creditFileId: '1WU9R9Yby0_QoJeulIgYRuCQk9XV-N_e1' // ← تم الإضافة
-	    // ✅ أضف هذين السطرين
+    creditFileName: 'creditdata.txt',
+    creditFileId: '1WU9R9Yby0_QoJeulIgYRuCQk9XV-N_e1',
     infoFileName: 'invoice-info.json',
     infoFileId: '1k8cB14gf4V9zLLo-Q1wjdJnpduoR0eLt'
-
 };
 
 // إصلاح Service Worker - تشغيل فوري
