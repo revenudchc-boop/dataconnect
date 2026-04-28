@@ -1650,17 +1650,17 @@ function checkSession() {
                 }, 5 * 60 * 1000);
             }
             
-            // ✅ طلب إذن الإشعارات (مرة واحدة فقط)
+            // ✅ طلب إذن الإشعارات المحلية (مرة واحدة فقط)
             if (typeof requestNotificationPermission === 'function') {
                 setTimeout(() => {
                     requestNotificationPermission();
                 }, 2000);
             }
             
-            // ✅ إعداد الإشعارات الفورية (Push Notifications)
-            if (typeof setupNotifications === 'function') {
+            // ✅ إعداد Push Notifications للإشعارات عند إغلاق المتصفح
+            if (typeof setupPushNotifications === 'function') {
                 setTimeout(() => {
-                    setupNotifications();
+                    setupPushNotifications();
                 }, 3000);
             }
             
@@ -7690,14 +7690,23 @@ async function setupNotifications() {
 // ============================================
 
 // دالة للتحقق من الفواتير الجديدة وإرسال إشعار تلقائي
+// دالة للتحقق من الفواتير الجديدة وإرسال إشعار تلقائي
 async function checkNewInvoicesAndNotify() {
     // التأكد من وجود فواتير ومستخدم مسجل
-    if (!invoicesData || invoicesData.length === 0) return;
-    if (!currentUser) return;
+    if (!invoicesData || invoicesData.length === 0) {
+        console.log('⚠️ لا توجد فواتير للتحقق');
+        return;
+    }
+    if (!currentUser) {
+        console.log('⚠️ لا يوجد مستخدم مسجل');
+        return;
+    }
     
     // جلب آخر عدد فواتير مسجل من التخزين المحلي
     const lastInvoiceCount = localStorage.getItem('lastInvoiceCount');
     const currentCount = invoicesData.length;
+    
+    console.log(`📊 آخر عدد مسجل: ${lastInvoiceCount}, العدد الحالي: ${currentCount}`);
     
     // إذا كانت هذه هي المرة الأولى (لا يوجد رقم مسجل)
     if (!lastInvoiceCount) {
@@ -7714,18 +7723,15 @@ async function checkNewInvoicesAndNotify() {
     if (newCount > 0) {
         console.log(`🆕 اكتشاف ${newCount} فواتير جديدة!`);
         
-        // إرسال إشعار للمستخدم إذا كان مصرحاً بذلك
+        // ✅ إرسال إشعار للمستخدم - نسخة مبسطة ومضمونة
         if (Notification.permission === 'granted') {
             try {
+                // نسخة مبسطة بدون icon وبدون خيارات إضافية
                 const notification = new Notification('📄 فواتير جديدة', {
-                    body: `تم إضافة ${newCount} فواتير جديدة إلى النظام. يرجى معاينتها.`,
-                    icon: 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
-                    requireInteraction: true,
-                    silent: false,
-                    tag: 'new-invoices'
+                    body: `تم إضافة ${newCount} فواتير جديدة إلى النظام. يرجى معاينتها.`
                 });
                 
-                // عند الضغط على الإشعار، افتح الصفحة ونشطها
+                // عند الضغط على الإشعار، افتح الصفحة
                 notification.onclick = function() {
                     window.focus();
                     notification.close();
@@ -7735,13 +7741,19 @@ async function checkNewInvoicesAndNotify() {
             } catch(e) {
                 console.error('❌ فشل إرسال الإشعار:', e);
             }
+        } else {
+            console.log(`⚠️ لا يمكن إرسال الإشعار - حالة الإذن: ${Notification.permission}`);
         }
         
         // تحديث العدد المسجل في التخزين المحلي
         localStorage.setItem('lastInvoiceCount', currentCount);
         
         // عرض إشعار داخلي للمستخدم (في واجهة الموقع)
-        showNotification(`📢 يوجد ${newCount} فواتير جديدة`, 'info');
+        if (typeof showNotification === 'function') {
+            showNotification(`📢 يوجد ${newCount} فواتير جديدة`, 'info');
+        }
+    } else {
+        console.log('✅ لا توجد فواتير جديدة');
     }
 }
 
