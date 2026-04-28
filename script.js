@@ -1629,6 +1629,13 @@ function checkSession() {
                 }, 5 * 60 * 1000);
             }
             
+            // ✅ إعداد الإشعارات الفورية (طلب الإذن)
+            if (typeof requestNotificationPermission === 'function') {
+                setTimeout(() => {
+                    requestNotificationPermission();
+                }, 2000);
+            }
+            
             // ✅ إعداد الإشعارات الفورية (Push Notifications)
             if (typeof setupNotifications === 'function') {
                 setTimeout(() => {
@@ -5575,6 +5582,11 @@ async function loadInvoicesFromDrive() {
         // تحديث واجهة المستخدم مرة أخيرة
         renderData();
         
+        // ✅ التحقق من الفواتير الجديدة وإرسال إشعار (الإضافة الجديدة)
+        if (typeof checkNewInvoicesAndNotify === 'function') {
+            await checkNewInvoicesAndNotify();
+        }
+        
 		// بعد تحميل العلامات وتحديث الجدول
 		setTimeout(() => {
 			checkUnviewedInvoicesAndShowReport();
@@ -7496,27 +7508,11 @@ function initNewsBar() {
 // تسجيل Service Worker (أضف هذا الكود في بداية script.js أو بعد تحميل الصفحة)
 
 async function registerServiceWorker() {
-    // التحقق من أن المتصفح يدعم Service Workers
-    if (!('serviceWorker' in navigator)) {
-        console.warn('⚠️ متصفحك لا يدعم Service Workers، لن تعمل الإشعارات');
-        return false;
-    }
-
-    // التحقق من أن المتصفح يدعم Push API
-    if (!('PushManager' in window)) {
-        console.warn('⚠️ متصفحك لا يدعم Push API، لن تعمل الإشعارات');
-        return false;
-    }
-
+    if (!('serviceWorker' in navigator)) return false;
     try {
-        // تسجيل Service Worker
-        const registration = await navigator.serviceWorker.register('/sw.js');
+        // ✅ غيّر المسار من '/sw.js' إلى '/dataconnect/sw.js'
+        const registration = await navigator.serviceWorker.register('/dataconnect/sw.js');
         console.log('✅ Service Worker تم تسجيله بنجاح', registration);
-        
-        // انتظار تفعيل Service Worker
-        await navigator.serviceWorker.ready;
-        console.log('✅ Service Worker جاهز للاستخدام');
-        
         return registration;
     } catch (error) {
         console.error('❌ فشل تسجيل Service Worker:', error);
@@ -7623,7 +7619,7 @@ async function initNotifications() {
     // تسجيل Service Worker إذا لم يكن مسجلاً
     if (!navigator.serviceWorker.controller) {
         try {
-            await navigator.serviceWorker.register('/sw.js');
+            await navigator.serviceWorker.register('/dataconnect/sw.js');
             console.log('✅ Service Worker مسجل');
         } catch (error) {
             console.error('❌ فشل تسجيل Service Worker:', error);
@@ -7636,10 +7632,106 @@ async function initNotifications() {
 }
 
 // تشغيل تهيئة الإشعارات عند تحميل الصفحة (بعد تسجيل الدخول)
-function setupNotifications() {
-    if (currentUser) {
-        setTimeout(() => {
-            initNotifications();
-        }, 2000);
+async function setupNotifications() {
+    // تسجيل Service Worker إذا لم يكن مسجلاً
+    if ('serviceWorker' in navigator) {
+        try {
+            let registration = await navigator.serviceWorker.getRegistration();
+            if (!registration) {
+                // ✅ استخدم المسار الصحيح هنا أيضاً
+                registration = await navigator.serviceWorker.register('/dataconnect/sw.js');
+                console.log('✅ Service Worker مسجل من setupNotifications');
+            }
+        } catch (error) {
+            console.error('❌ فشل تسجيل Service Worker:', error);
+        }
+    }
+    
+    // الاشتراك في الإشعارات
+    await subscribeToPush();
+}
+
+// ============================================
+// نظام الإشعارات التلقائي للفواتير الجديدة
+// ============================================
+
+// دالة للتحقق من الفواتير الجديدة وإرسال إشعار
+async function checkNewInvoicesAndNotify() {
+    // التأكد من وجود فواتير
+    if (!invoicesData || invoicesData.length === 0) return;
+    
+    // جلب آخر عدد فواتير مسجل
+    const lastInvoiceCount = localStorage.getItem('lastInvoiceCount');
+    const currentCount = invoicesData.length;
+    
+    // إذا كانت هذه هي المرة الأولى (لا يوجد رقم مسجل)
+    if (!lastInvoiceCount) {
+        localStorage.setItem('lastInvoiceCount', currentCount);
+        console.log('📊 تم تسجيل العدد الحالي للفواتير:', currentCount);
+        return;
+    }
+    
+    // إذا كان هناك فواتير جديدة
+    if (currentCount > parseInt(lastInvoiceCount)) {
+        const newCount = currentCount - parseInt(lastInvoiceCount);
+        
+        console.log(`🆕 اكتشاف ${newCount} فواتير جديدة!`);
+        
+        // إرسال إشعار بالمتصفح إذا كان مسموحاً
+        if (Notification.permission === 'granted') {
+            try {
+                const notification = new Notification('📄 فواتير جديدة', {
+                    body: `تم إضافة ${newCount} فواتير جديدة. يرجى معاينتها.`,
+                    icon: 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png', // صورة عامة (تجنب 404)
+                    requireInteraction: true,
+                    silent: false
+                });
+                
+                // عند الضغط على الإشعار، افتح صفحة الفواتير
+                notification.onclick = function() {
+                    window.focus();
+                    // يمكنك إضافة توجيه إلى صفحة الفواتير هنا
+                };
+                
+                console.log('✅ تم إرسال الإشعار بنجاح');
+            } catch(e) {
+                console.error('❌ فشل إرسال الإشعار:', e);
+            }
+        }
+        
+        // تحديث العدد المسجل
+        localStorage.setItem('lastInvoiceCount', currentCount);
+    }
+}
+
+// دالة لإعادة تعيين عداد الفواتير (يمكن استدعاؤها يدوياً)
+function resetInvoiceCounter() {
+    if (invoicesData && invoicesData.length) {
+        localStorage.setItem('lastInvoiceCount', invoicesData.length);
+        console.log('🔄 تم إعادة تعيين العداد إلى:', invoicesData.length);
+    } else {
+        localStorage.removeItem('lastInvoiceCount');
+        console.log('🔄 تم مسح العداد');
+    }
+}
+
+// دالة لطلب إذن الإشعارات (تستدعى عند تحميل الصفحة)
+function requestNotificationPermission() {
+    if (!("Notification" in window)) {
+        console.log("⚠️ المتصفح لا يدعم الإشعارات");
+        return;
+    }
+    
+    if (Notification.permission === "default") {
+        Notification.requestPermission().then(function(permission) {
+            if (permission === "granted") {
+                console.log("✅ تم تفعيل الإشعارات");
+                // إشعار ترحيبي
+                new Notification("✅ تم تفعيل الإشعارات", {
+                    body: "سيتم إعلامك عند وجود فواتير جديدة",
+                    icon: "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
+                });
+            }
+        });
     }
 }
