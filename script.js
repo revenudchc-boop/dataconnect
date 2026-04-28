@@ -75,8 +75,8 @@ let driveConfig = {
     logoFileId: '1DugYxs9a21e6J0ynTu6pE0yHXM2wRXSP',
     creditFileName: 'creditdata.txt',
     creditFileId: '1WU9R9Yby0_QoJeulIgYRuCQk9XV-N_e1',
-    infoFileName: 'invoice-info.json',
-    infoFileId: '1cgi5kRhAUlkGVgw5ClSqGG8x_Kg8PoJf'
+	infoFileName: 'invoice_count.txt',
+	infoFileId: '1_rzxEb7T4liL58BX3OFvdwF5ENionxQH'
 };
 
 // إصلاح Service Worker - تشغيل فوري
@@ -7934,6 +7934,7 @@ if (currentUser) {
 // ============================================
 
 // قراءة عدد الفواتير من Drive
+// قراءة عدد الفواتير من Drive (من ملف TXT)
 async function readInvoiceCountFromDrive() {
     if (!driveConfig.infoFileId) {
         console.log('⚠️ infoFileId غير متوفر');
@@ -7941,12 +7942,18 @@ async function readInvoiceCountFromDrive() {
     }
     
     try {
+        // ✅ استخدام مفتاح API للقراءة (أسهل)
         const url = `https://www.googleapis.com/drive/v3/files/${driveConfig.infoFileId}?alt=media&key=${driveConfig.apiKey}`;
         const response = await fetch(url);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
-        console.log('📊 تم قراءة العدد من Drive:', data.count);
-        return data;
+        
+        const content = await response.text();
+        const count = parseInt(content, 10);
+        
+        if (isNaN(count)) throw new Error('المحتوى ليس رقماً صالحاً');
+        
+        console.log('📊 تم قراءة العدد من Drive (TXT):', count);
+        return { count: count, lastUpdated: new Date().toISOString() };
     } catch (error) {
         console.error('❌ فشل قراءة عدد الفواتير من Drive:', error);
         return null;
@@ -7954,6 +7961,7 @@ async function readInvoiceCountFromDrive() {
 }
 
 // كتابة عدد الفواتير إلى Drive
+// كتابة عدد الفواتير إلى Drive (باستخدام TXT)
 async function writeInvoiceCountToDrive(count) {
     if (!driveConfig.infoFileId) {
         console.log('⚠️ infoFileId غير متوفر');
@@ -7969,23 +7977,21 @@ async function writeInvoiceCountToDrive(count) {
         }
     }
     
-    const info = {
-        count: count,
-        lastUpdated: new Date().toISOString()
-    };
+    // ✅ المحتوى هو الرقم فقط كنص
+    const content = count.toString();
     
     try {
         const response = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveConfig.infoFileId}?uploadType=media`, {
             method: 'PATCH',
             headers: {
                 'Authorization': `Bearer ${driveAccessToken}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'text/plain'
             },
-            body: JSON.stringify(info)
+            body: content
         });
         
         if (response.ok) {
-            console.log('✅ تم حفظ عدد الفواتير في Drive:', count);
+            console.log('✅ تم حفظ عدد الفواتير في Drive (TXT):', count);
             return true;
         } else {
             const errorText = await response.text();
