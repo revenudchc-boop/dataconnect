@@ -8081,27 +8081,16 @@ async function loadInitialInvoiceCount() {
 // ============================================
 async function sendEmailNotification(to, subject, html) {
     try {
-        const response = await fetch('https://api.resend.com/emails', {
+        const response = await fetch('https://invoice-notifier.revenudchc.workers.dev/api/send-email', {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${RESEND_API_KEY}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                from: 'نظام الفواتير <onboarding@resend.dev>',
-                to: [to],
-                subject: subject,
-                html: html
-            })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to, subject, html })
         });
-        
-        if (response.ok) {
-            console.log('✅ تم إرسال الإيميل بنجاح');
-        } else {
-            const error = await response.text();
-            console.error('❌ فشل إرسال الإيميل:', error);
-        }
+        const result = await response.json();
+        console.log('📧 نتيجة إرسال الإيميل:', result);
+        return response.ok;
     } catch (error) {
-        console.error('❌ خطأ في الإرسال:', error);
+        console.error('❌ فشل إرسال الإيميل:', error);
+        return false;
     }
 }
