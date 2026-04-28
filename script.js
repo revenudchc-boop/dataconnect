@@ -7764,20 +7764,20 @@ function requestNotificationPermission() {
         return;
     }
     
-    // إذا كان الإذن لم يحدد بعد (default)، اطلبه من المستخدم
     if (Notification.permission === "default") {
-        Notification.requestPermission().then(function(permission) {
+        Notification.requestPermission().then(permission => {
             if (permission === "granted") {
                 console.log("✅ تم تفعيل الإشعارات");
-                // إشعار ترحيبي
                 new Notification("✅ نظام الفواتير", {
-                    body: "تم تفعيل الإشعارات بنجاح. سيتم إعلامك عند وجود فواتير جديدة.",
+                    body: "الإشعارات مفعلة، سيتم إعلامك بالفواتير الجديدة",
                     icon: "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
                 });
-            } else {
-                console.log("❌ لم يتم تفعيل الإشعارات");
             }
         });
+    } else if (Notification.permission === "granted") {
+        console.log("✅ الإشعارات مفعلة مسبقاً");
+    } else {
+        console.log("⚠️ الإشعارات محظورة، قم بتفعيلها من إعدادات المتصفح");
     }
 }
 
@@ -7844,4 +7844,66 @@ async function syncInvoiceCount() {
     } catch (error) {
         console.error('❌ فشل المزامنة مع الخادم:', error);
     }
+}
+
+
+// الاشتراك في Push Notifications
+async function subscribeToPush() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        console.log('⚠️ Push API غير مدعوم');
+        return false;
+    }
+    
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+        console.log('❌ إذن الإشعارات غير ممنوح');
+        return false;
+    }
+    
+    try {
+        const WORKER_URL = 'https://invoice-notifier.revenudchc.workers.dev';
+        
+        // الحصول على المفتاح العام
+        const keyResponse = await fetch(`${WORKER_URL}/api/vapid-key`);
+        const { publicKey } = await keyResponse.json();
+        
+        // تحويل المفتاح
+        function urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            for (let i = 0; i < rawData.length; ++i) {
+                outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+        }
+        
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(publicKey)
+        });
+        
+        // إرسال الاشتراك إلى الخادم
+        await fetch(`${WORKER_URL}/api/subscribe`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(subscription)
+        });
+        
+        console.log('✅ تم الاشتراك في Push Notifications بنجاح');
+        return true;
+        
+    } catch (error) {
+        console.error('❌ فشل الاشتراك:', error);
+        return false;
+    }
+}
+
+// استدعاء الاشتراك بعد تسجيل الدخول
+if (currentUser) {
+    setTimeout(() => {
+        subscribeToPush();
+    }, 3000);
 }
