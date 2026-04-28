@@ -1650,12 +1650,21 @@ function checkSession() {
                 }, 5 * 60 * 1000);
             }
             
-            // ✅ إعداد الإشعارات الفورية (طلب الإذن)
-            if (typeof requestNotificationPermission === 'function') {
-                setTimeout(() => {
-                    requestNotificationPermission();
-                }, 2000);
-            }
+            // ✅ طلب إذن الإشعارات (مرة واحدة فقط)
+            setTimeout(() => {
+                if (Notification.permission === 'default') {
+                    Notification.requestPermission().then(permission => {
+                        if (permission === 'granted') {
+                            console.log('✅ تم منح الإذن للإشعارات');
+                            // إشعار ترحيبي بسيط
+                            new Notification('✅ نظام الفواتير', {
+                                body: 'تم تفعيل الإشعارات، سيتم إعلامك بالفواتير الجديدة',
+                                icon: 'https://revenudchc-boop.github.io/dataconnect/logo.png'
+                            });
+                        }
+                    });
+                }
+            }, 2000);
             
             // ✅ إعداد الإشعارات الفورية (Push Notifications)
             if (typeof setupNotifications === 'function') {
