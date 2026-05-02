@@ -300,16 +300,7 @@ function formatNumberWithCommas(number) {
     // ... الكود الموجود
 }
 
-// إعدادات Drive المباشرة
-// ============================================
-const DRIVE_CONFIG = {
-    clientId: '835944620738-jcl9dh4j2fjuut18vhvik3605t9k20m9.apps.googleusercontent.com',
-    clientSecret: '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',
-    refreshToken: '',  // سيتم تعبئته من ملف refreshtoken.txt على Drive
-    fileId: '1DuActXaKPadEJ843EUlEAAmU7CBHQAVt'
-};
 
-let driveAccessToken = null;
 
 // تحميل Refresh Token من ملف نصي على Drive
 async function loadRefreshTokenFromDrive() {
@@ -344,34 +335,6 @@ async function loadRefreshTokenFromDrive() {
     }
 }
 
-// تجديد Access Token باستخدام Refresh Token
-async function refreshAccessToken() {
-    try {
-        const response = await fetch('https://oauth2.googleapis.com/token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({
-                client_id: DRIVE_CONFIG.clientId,
-                client_secret: DRIVE_CONFIG.clientSecret,
-                refresh_token: DRIVE_CONFIG.refreshToken,
-                grant_type: 'refresh_token'
-            })
-        });
-        
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`فشل تجديد التوكن: ${response.status} - ${errorText}`);
-        }
-        
-        const data = await response.json();
-        driveAccessToken = data.access_token;
-        console.log('✅ تم تجديد Access Token بنجاح');
-        return driveAccessToken;
-    } catch (error) {
-        console.error('❌ خطأ في تجديد Access Token:', error);
-        throw error;
-    }
-}
 
 // حفظ إلى Drive
 async function saveViewedToDrive() {
@@ -6945,7 +6908,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 	
 	
 	// ✅ استدعاء تحميل التوكن
-    await loadRefreshTokenFromDrive();
+    //await loadRefreshTokenFromDrive();
     
     // تحميل الشعار من Drive
     await loadLogoFromDrive();
@@ -6980,30 +6943,6 @@ function debounce(func, wait) {
     let timeout;
     return (...args) => { clearTimeout(timeout); timeout = setTimeout(() => func(...args), wait); };
 }
-
-
-// ============================================
-// تحميل العلامات مباشرة (مستقل عن باقي البرنامج)
-// ============================================
-(function forceLoadViewed() {
-    console.log('🔄 [forceLoadViewed] بدء التنفيذ');
-    
-    // انتظار وجود currentUser
-    const checkInterval = setInterval(() => {
-        if (currentUser) {
-            clearInterval(checkInterval);
-            console.log('✅ [forceLoadViewed] تم العثور على currentUser:', currentUser.username);
-            
-            // انتظار قليلاً ثم تحميل العلامات
-            setTimeout(() => {
-                console.log('🔄 [forceLoadViewed] جاري تحميل العلامات...');
-                loadViewedFromDrive();
-            }, 2000);
-        } else {
-            console.log('⏳ [forceLoadViewed] انتظار currentUser...');
-        }
-    }, 500);
-})();
 
 
 // دالة للتحقق مما إذا كانت الفاتورة تخص المستخدم الحالي
