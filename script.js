@@ -102,63 +102,78 @@ async function loadViewedFromDrive() {
         return false;
     }
     
-    try {
-        const response = await fetch(VIEWED_CLOUD_URL);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
-        const data = await response.json();
-        const userKey = currentUser.username;
-        const userViewed = data[userKey] || [];
-        
-        viewedInvoices = new Set(userViewed);
-        saveViewedInvoices(); // نسخة احتياطية محلية
-        
-        console.log(`✅ تم تحميل ${viewedInvoices.size} فاتورة للمستخدم ${userKey}`);
-        return true;
-    } catch (error) {
-        console.error('❌ فشل تحميل حالة المعاينة:', error);
-        return false;
+    // إعادة المحاولة حتى 3 مرات مع تأخير بين المحاولات
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            const response = await fetch(VIEWED_CLOUD_URL);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            
+            const data = await response.json();
+            const userKey = currentUser.username;
+            const userViewed = data[userKey] || [];
+            
+            viewedInvoices = new Set(userViewed);
+            saveViewedInvoices(); // نسخة احتياطية محلية
+            
+            console.log(`✅ تم تحميل ${viewedInvoices.size} فاتورة للمستخدم ${userKey}`);
+            return true;
+        } catch (error) {
+            console.warn(`⚠️ المحاولة ${attempt} فشلت:`, error.message);
+            if (attempt < 3) {
+                // انتظر ثانية ثم أعد المحاولة
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
     }
+    
+    console.error('❌ فشلت جميع محاولات تحميل حالة المعاينة');
+    return false;
 }
 
 async function saveViewedToDrive() {
     console.log('💾 بدء حفظ حالة المعاينة إلى Google Apps Script...');
     
-    try {
-        // 1. جلب البيانات الحالية من السحابة
-        let allData = {};
+    for (let attempt = 1; attempt <= 3; attempt++) {
         try {
-            const readResponse = await fetch(VIEWED_CLOUD_URL);
-            if (readResponse.ok) {
-                allData = await readResponse.json();
+            // 1. جلب البيانات الحالية من السحابة
+            let allData = {};
+            try {
+                const readResponse = await fetch(VIEWED_CLOUD_URL);
+                if (readResponse.ok) {
+                    allData = await readResponse.json();
+                }
+            } catch (e) {
+                console.warn('⚠️ تعذر قراءة البيانات الحالية، سيتم إنشاء بيانات جديدة');
             }
-        } catch (e) {
-            console.warn('⚠️ تعذر قراءة البيانات الحالية، سيتم إنشاء بيانات جديدة');
+            
+            // 2. تحديث بيانات المستخدم الحالي
+            const userKey = currentUser?.username || 'guest';
+            allData[userKey] = [...viewedInvoices];
+            allData.lastUpdated = new Date().toISOString();
+            
+            // 3. حفظ البيانات المحدثة
+            const saveResponse = await fetch(VIEWED_CLOUD_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(allData)
+            });
+            
+            if (saveResponse.ok) {
+                console.log(`✅ تم حفظ الحالة للمستخدم ${userKey}`);
+                return true;
+            } else {
+                throw new Error(`HTTP ${saveResponse.status}`);
+            }
+        } catch (error) {
+            console.warn(`⚠️ محاولة الحفظ ${attempt} فشلت:`, error.message);
+            if (attempt < 3) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
         }
-        
-        // 2. تحديث بيانات المستخدم الحالي
-        const userKey = currentUser?.username || 'guest';
-        allData[userKey] = [...viewedInvoices];
-        allData.lastUpdated = new Date().toISOString();
-        
-        // 3. حفظ البيانات المحدثة
-        const saveResponse = await fetch(VIEWED_CLOUD_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(allData)
-        });
-        
-        if (saveResponse.ok) {
-            console.log(`✅ تم حفظ الحالة للمستخدم ${userKey}`);
-            return true;
-        } else {
-            console.error(`❌ فشل الحفظ: ${saveResponse.status}`);
-            return false;
-        }
-    } catch (error) {
-        console.error('❌ خطأ في حفظ الحالة:', error);
-        return false;
     }
+    
+    console.error('❌ فشلت جميع محاولات حفظ الحالة');
+    return false;
 }
 
 // متغير لتخزين الشعار
@@ -285,7 +300,16 @@ function formatNumberWithCommas(number) {
     // ... الكود الموجود
 }
 
+// إعدادات Drive المباشرة
+// ============================================
+const DRIVE_CONFIG = {
+    clientId: '835944620738-jcl9dh4j2fjuut18vhvik3605t9k20m9.apps.googleusercontent.com',
+    clientSecret: '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',
+    refreshToken: '',  // سيتم تعبئته من ملف refreshtoken.txt على Drive
+    fileId: '1DuActXaKPadEJ843EUlEAAmU7CBHQAVt'
+};
 
+let driveAccessToken = null;
 
 // تحميل Refresh Token من ملف نصي على Drive
 async function loadRefreshTokenFromDrive() {
@@ -6921,7 +6945,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 	
 	
 	// ✅ استدعاء تحميل التوكن
-    //await loadRefreshTokenFromDrive();
+    await loadRefreshTokenFromDrive();
     
     // تحميل الشعار من Drive
     await loadLogoFromDrive();
