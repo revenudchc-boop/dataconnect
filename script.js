@@ -336,42 +336,6 @@ async function loadRefreshTokenFromDrive() {
 }
 
 
-// حفظ إلى Drive
-async function saveViewedToDrive() {
-    if (!driveAccessToken) await refreshAccessToken();
-    try {
-        // قراءة الملف الحالي أولاً
-        let allData = {};
-        const readResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${DRIVE_CONFIG.fileId}?alt=media`, {
-            headers: { 'Authorization': `Bearer ${driveAccessToken}` }
-        });
-        if (readResponse.ok) {
-            allData = await readResponse.json();
-        }
-        
-        const userKey = currentUser?.username || 'guest';
-        allData[userKey] = [...viewedInvoices];
-        allData.lastUpdated = new Date().toISOString();
-        
-        const response = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${DRIVE_CONFIG.fileId}?uploadType=media`, {
-            method: 'PATCH',
-            headers: {
-                'Authorization': `Bearer ${driveAccessToken}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(allData)
-        });
-        
-        if (response.ok) {
-            console.log('✅ تم حفظ الحالة في Drive');
-            return true;
-        }
-    } catch (error) {
-        console.error('خطأ في حفظ الحالة إلى Drive:', error);
-    }
-    return false;
-}
-
 // ============================================
 // دوال تنسيق الأرقام
 // ============================================
