@@ -6921,7 +6921,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 	
 	
 	// ✅ استدعاء تحميل التوكن
-    await loadRefreshTokenFromDrive();
+    //await loadRefreshTokenFromDrive();
     
     // تحميل الشعار من Drive
     await loadLogoFromDrive();
