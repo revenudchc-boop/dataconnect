@@ -154,7 +154,7 @@ async function saveViewedToDrive() {
             // 3. حفظ البيانات المحدثة
             const saveResponse = await fetch(VIEWED_CLOUD_URL, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'text/plain' },
                 body: JSON.stringify(allData)
             });
             
