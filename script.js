@@ -23,12 +23,6 @@ const INVOICE_TYPES = {
 };
 let currentInvoiceType = INVOICE_TYPES.CASH;
 
-// ============================================
-// إعدادات البريد الإلكتروني
-// ============================================
-const RESEND_API_KEY = 're_HHqtAEPV_HsVrpgPW23KRXzuLGkY8knzm';
-const ADMIN_EMAIL = 'revenudchc@gmail.com';
-
 // المتغيرات العامة
 let invoicesData = [];
 let filteredInvoices = [];
@@ -58,6 +52,7 @@ let viewModeCredit = 'cards';
 let selectedCreditNotes = new Set();
 // متغير لتخزين الفواتير التي تمت معاينتها
 let viewedInvoices = new Set();
+const NEWS_VISIBLE_KEY = 'newsBarVisible';
 // ============================================
 // إعدادات التحديث التلقائي (Auto Refresh)
 // ============================================
@@ -79,33 +74,10 @@ let driveConfig = {
     usersFileName: 'users.json',
     usersFileId: '1-ktLLXz1Febs44lB-aqfuNmTRs1GNB0w',
     logoFileId: '1DugYxs9a21e6J0ynTu6pE0yHXM2wRXSP',
-    creditFileName: 'creditdata.txt',
-    creditFileId: '1WU9R9Yby0_QoJeulIgYRuCQk9XV-N_e1',
-	infoFileName: 'invoice_count.txt',
-	infoFileId: '1_rzxEb7T4liL58BX3OFvdwF5ENionxQH'
+    creditFileName: 'creditdata.txt',                // ← تم التغيير
+    creditFileId: '1WU9R9Yby0_QoJeulIgYRuCQk9XV-N_e1' // ← تم الإضافة
 };
 
-// إصلاح Service Worker - تشغيل فوري
-(function fixServiceWorker() {
-    if (!('serviceWorker' in navigator)) return;
-    
-    // 1. إلغاء أي Service Worker قديم
-    navigator.serviceWorker.getRegistrations().then(registrations => {
-        registrations.forEach(registration => {
-            if (registration.active && registration.active.scriptURL.includes('/sw.js')) {
-                console.log('🗑️ إلغاء التسجيل القديم');
-                registration.unregister();
-            }
-        });
-    });
-    
-    // 2. تسجيل المسار الصحيح
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/dataconnect/sw.js')
-            .then(reg => console.log('✅ Service Worker مسجل من المسار الصحيح'))
-            .catch(err => console.error('❌ فشل التسجيل:', err));
-    });
-})();
 // متغيرات التقارير
 let currentReportType = 'daily';
 
@@ -119,108 +91,49 @@ let selectedInvoices = new Set();
 // إعدادات Web App للمزامنة
 // ============================================
 const SYNC_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwhI-WpSqD2jmS0-dENEDACYFYV9JiS5r0snG0haJqtBJTSROXrtBHmHOY5-_5c_Pf9/exec';
+// إعدادات التخزين السحابي لحالة المعاينة (Google Apps Script)
+const VIEWED_CLOUD_URL = 'https://script.google.com/macros/s/AKfycbwXfSeRg3JAxsgCTDedaspLe9SVEAn5gpInrs-TLGkbgq9599UOhXRQX2DR3cjW7X0R1A/exec';
 
 async function loadViewedFromDrive() {
-    console.log('🔍 [1] بدء تنفيذ loadViewedFromDrive');
+    console.log('🔍 بدء تحميل حالة المعاينة من Google Apps Script...');
     
-    // التحقق من وجود currentUser
     if (!currentUser) {
-        console.error('❌ [2] currentUser غير موجود!');
+        console.error('❌ currentUser غير موجود!');
         return false;
-    }
-    console.log('✅ [2] currentUser موجود:', currentUser.username);
-    
-    // التحقق من وجود driveAccessToken
-    if (!driveAccessToken) {
-        console.log('🔄 [3] driveAccessToken غير موجود، جاري تجديده...');
-        try {
-            await refreshAccessToken();
-            console.log('✅ [4] تم تجديد access_token بنجاح');
-        } catch (error) {
-            console.error('❌ [4] فشل تجديد access_token:', error);
-            return false;
-        }
-    } else {
-        console.log('✅ [3] driveAccessToken موجود');
     }
     
     try {
-        console.log('🔄 [5] جاري إرسال طلب إلى Drive API...');
-        const response = await fetch(`https://www.googleapis.com/drive/v3/files/${DRIVE_CONFIG.fileId}?alt=media`, {
-            headers: { 'Authorization': `Bearer ${driveAccessToken}` }
-        });
+        const response = await fetch(VIEWED_CLOUD_URL);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
-        console.log(`📡 [6] حالة الاستجابة: ${response.status}`);
+        const data = await response.json();
+        const userKey = currentUser.username;
+        const userViewed = data[userKey] || [];
         
-        if (response.ok) {
-            const data = await response.json();
-            console.log('✅ [7] البيانات المستلمة:', data);
-            
-            const userKey = currentUser.username;
-            const userViewed = data[userKey] || [];
-            console.log(`📋 [8] بيانات المستخدم ${userKey}:`, userViewed);
-            
-            viewedInvoices = new Set(userViewed);
-            saveViewedInvoices();
-            
-            console.log(`✅ [9] تم تحميل ${viewedInvoices.size} فاتورة للمستخدم ${userKey}`);
-            
-            // تحديث واجهة الجدول
-            if (typeof renderData === 'function') {
-                console.log('🔄 [10] جاري تحديث واجهة الجدول...');
-                renderData();
-            }
-            return true;
-        } else if (response.status === 404) {
-            console.log('📄 [7] ملف الحالة غير موجود (404)، سيتم إنشاؤه عند أول حفظ');
-            return false;
-        } else {
-            const errorText = await response.text();
-            console.error(`❌ [7] فشل التحميل: ${response.status} - ${errorText}`);
-            return false;
-        }
+        viewedInvoices = new Set(userViewed);
+        saveViewedInvoices(); // نسخة احتياطية محلية
+        
+        console.log(`✅ تم تحميل ${viewedInvoices.size} فاتورة للمستخدم ${userKey}`);
+        return true;
     } catch (error) {
-        console.error('❌ [8] خطأ في طلب Drive:', error);
+        console.error('❌ فشل تحميل حالة المعاينة:', error);
         return false;
     }
 }
 
 async function saveViewedToDrive() {
-    if (!driveAccessToken) {
-        await refreshAccessToken();
-    }
+    console.log('💾 بدء حفظ حالة المعاينة إلى Google Apps Script...');
     
     try {
-        // 1. قراءة البيانات الحالية من الملف أولاً
+        // 1. جلب البيانات الحالية من السحابة
         let allData = {};
         try {
-            const readResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${DRIVE_CONFIG.fileId}?alt=media`, {
-                headers: { 'Authorization': `Bearer ${driveAccessToken}` }
-            });
-            
+            const readResponse = await fetch(VIEWED_CLOUD_URL);
             if (readResponse.ok) {
-                const text = await readResponse.text();
-                // ✅ التحقق من أن الملف ليس فارغاً
-                if (text && text.trim()) {
-                    try {
-                        allData = JSON.parse(text);
-                    } catch (e) {
-                        console.warn('⚠️ محتوى الملف غير صالح (JSON parse error)، سيتم إنشاء بيانات جديدة');
-                        allData = {};
-                    }
-                } else {
-                    console.log('📄 الملف فارغ، سيتم إنشاء بيانات جديدة');
-                    allData = {};
-                }
-            } else if (readResponse.status === 404) {
-                console.log('📄 ملف الحالة غير موجود، سيتم إنشاؤه');
-                allData = {};
-            } else {
-                console.warn(`⚠️ لم نتمكن من قراءة الملف الحالي: ${readResponse.status}`);
+                allData = await readResponse.json();
             }
-        } catch (readError) {
-            console.warn('⚠️ خطأ في قراءة الملف:', readError);
-            allData = {};
+        } catch (e) {
+            console.warn('⚠️ تعذر قراءة البيانات الحالية، سيتم إنشاء بيانات جديدة');
         }
         
         // 2. تحديث بيانات المستخدم الحالي
@@ -229,25 +142,21 @@ async function saveViewedToDrive() {
         allData.lastUpdated = new Date().toISOString();
         
         // 3. حفظ البيانات المحدثة
-        const saveResponse = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${DRIVE_CONFIG.fileId}?uploadType=media`, {
-            method: 'PATCH',
-            headers: {
-                'Authorization': `Bearer ${driveAccessToken}`,
-                'Content-Type': 'application/json'
-            },
+        const saveResponse = await fetch(VIEWED_CLOUD_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(allData)
         });
         
         if (saveResponse.ok) {
-            console.log(`✅ تم حفظ الحالة في Drive للمستخدم ${userKey}`);
+            console.log(`✅ تم حفظ الحالة للمستخدم ${userKey}`);
             return true;
         } else {
-            const errorText = await saveResponse.text();
-            console.error(`❌ فشل حفظ البيانات في Drive: ${saveResponse.status} - ${errorText}`);
+            console.error(`❌ فشل الحفظ: ${saveResponse.status}`);
             return false;
         }
     } catch (error) {
-        console.error('❌ خطأ في حفظ الحالة إلى Drive:', error);
+        console.error('❌ خطأ في حفظ الحالة:', error);
         return false;
     }
 }
@@ -376,16 +285,7 @@ function formatNumberWithCommas(number) {
     // ... الكود الموجود
 }
 
-// إعدادات Drive المباشرة
-// ============================================
-const DRIVE_CONFIG = {
-    clientId: '835944620738-jcl9dh4j2fjuut18vhvik3605t9k20m9.apps.googleusercontent.com',
-    clientSecret: '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',
-    refreshToken: '',  // سيتم تعبئته من ملف refreshtoken.txt على Drive
-    fileId: '1DuActXaKPadEJ843EUlEAAmU7CBHQAVt'
-};
 
-let driveAccessToken = null;
 
 // تحميل Refresh Token من ملف نصي على Drive
 async function loadRefreshTokenFromDrive() {
@@ -1657,21 +1557,6 @@ function checkSession() {
                     }
                 }, 5 * 60 * 1000);
             }
-            
-            // ✅ طلب إذن الإشعارات المحلية (مرة واحدة فقط)
-            if (typeof requestNotificationPermission === 'function') {
-                setTimeout(() => {
-                    requestNotificationPermission();
-                }, 2000);
-            }
-            
-            // ✅ إعداد Push Notifications للإشعارات عند إغلاق المتصفح
-            if (typeof setupPushNotifications === 'function') {
-                setTimeout(() => {
-                    setupPushNotifications();
-                }, 3000);
-            }
-            
         } catch(e) {
             console.error('خطأ في استعادة الجلسة:', e);
             sessionStorage.removeItem('currentUser');
@@ -1770,6 +1655,13 @@ function updateUserInterface() {
 
     // ✅ بناء واجهة البحث المتقدم لكل المستخدمين (الدالة الداخلية ستقرر القائمة أو النص)
     buildInvoiceSearchUI();
+	
+	    // تحميل شريط الأخبار
+    if (currentUser) {
+        setTimeout(function() {
+            initNewsBar();
+        }, 1000);
+    }
 }
 
 window.showChangePassword = function() {
@@ -5596,13 +5488,8 @@ async function loadInvoicesFromDrive() {
         }
 
         if (!newInvoices.length) throw new Error('لا توجد فواتير');
-        
-        const oldCount = invoicesData.length;
         invoicesData = newInvoices;
         showProgress('تم التحميل', 100);
-        
-        // ✅ تحميل العدد المسجل من Drive
-        await loadInitialInvoiceCount();
         
         // ✅ تطبيق تصفية المستخدم أولاً
         currentUser?.isGuest ? filterInvoicesByGuest(currentUser.taxNumber, currentUser.blNumber) : filterInvoicesByUser();
@@ -5616,34 +5503,17 @@ async function loadInvoicesFromDrive() {
         // تحديث واجهة المستخدم مرة أخيرة
         renderData();
         
-        // ✅ التحقق من الفواتير الجديدة وإرسال إشعار
-        if (typeof checkNewInvoicesAndNotify === 'function') {
-            await checkNewInvoicesAndNotify();
-        }
-        
-        // ✅ مزامنة العدد الجديد مع Drive و Cloudflare
-        await syncInvoiceCount();
-        
-        // ✅ تحديث ملف invoice-info.json محلياً (سيتم إرساله إلى الخادم)
-        if (typeof updateInvoiceInfo === 'function') {
-            await updateInvoiceInfo();
-        }
-        
-        // بعد تحميل العلامات وتحديث الجدول
-        setTimeout(() => {
-            checkUnviewedInvoicesAndShowReport();
-        }, 500);
-        
+		// بعد تحميل العلامات وتحديث الجدول
+		setTimeout(() => {
+			checkUnviewedInvoicesAndShowReport();
+		}, 500);
         document.getElementById('fileStatus').innerHTML = `<i class="fas fa-check-circle"></i> ✅ تم تحميل ${formatNumberWithCommas(invoicesData.length)} فاتورة من Drive`;
         updateDataSource();
         return true;
-        
     } catch (error) {
         showNotification(`❌ خطأ: ${error.message}`, 'error');
         return false;
-    } finally { 
-        setTimeout(hideProgress, 1500); 
-    }
+    } finally { setTimeout(hideProgress, 1500); }
 }
 
 window.updateFromDrive = async function() {
@@ -7378,734 +7248,120 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 // ============================================
-// شريط الأخبار المتحرك المتطور (News Ticker)
+// شريط الأخبار المتحرك - نسخة بطيئة ومستقرة
 // ============================================
-const NEWS_FILE_ID = '1XOsN5gRzJtH0rY5Q020Z4J2j3Sb1_2Wk';
-const NEWS_CACHE_KEY = 'newsData';
-const NEWS_CACHE_TIME = 30 * 60 * 1000; // 30 دقيقة
 
 async function loadNewsFromDrive() {
     const newsBar = document.getElementById('newsBar');
     const newsContent = document.getElementById('newsTickerContent');
-    if (!newsBar || !newsContent) return;
-
-    // التحقق من حالة الرؤية المخزنة (افتراضي ظاهر)
-    const isVisible = localStorage.getItem(NEWS_VISIBLE_KEY) !== 'false';
-    if (!isVisible) {
-        newsBar.classList.add('hidden');
-        updateToggleButtonIcon(false);
-    } else {
-        newsBar.classList.remove('hidden');
-        updateToggleButtonIcon(true);
+    
+    if (!newsBar || !newsContent) {
+        console.error('❌ عناصر شريط الأخبار غير موجودة');
+        return;
     }
 
-    // التحقق من وجود بيانات مخزنة حديثة
-    const cached = localStorage.getItem(NEWS_CACHE_KEY);
-    if (cached) {
-        try {
-            const { data, timestamp } = JSON.parse(cached);
-            if (Date.now() - timestamp < NEWS_CACHE_TIME) {
-                displayNewsTicker(data);
-                newsBar.style.display = 'flex';
-                return;
-            }
-        } catch(e) {}
-    }
+    const newsUrl = 'https://raw.githubusercontent.com/revenudchc-boop/dataconnect/main/news.txt';
 
     try {
-        const apiKey = driveConfig.apiKey || 'AIzaSyBy4WRI3zkUwlCvbrXpB8o9ZbFMuH4AdGA';
-        const url = `https://www.googleapis.com/drive/v3/files/${NEWS_FILE_ID}?alt=media&key=${apiKey}`;
-        const response = await fetch(url);
+        newsContent.innerHTML = '<div class="news-item"><i class="fas fa-spinner fa-spin"></i> جاري تحميل الأخبار...</div>';
+        newsBar.style.display = 'flex';
+        
+        const response = await fetch(newsUrl);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const content = await response.text();
         
-        // تحويل النص إلى قائمة أخبار، مع تجاهل الأسطر التي تبدأ بـ # (تعليق)
-        let newsItems = content.split(/\r?\n/)
-            .map(line => line.trim())
-            .filter(line => line !== '' && !line.startsWith('#'));
-        
+        let newsItems = content.split(/\r?\n/).filter(line => line.trim() !== '');
         if (newsItems.length === 0) newsItems = ['مرحباً بك في نظام الفواتير المتقدم'];
         
-        // تخزين مؤقت
-        localStorage.setItem(NEWS_CACHE_KEY, JSON.stringify({
-            data: newsItems,
-            timestamp: Date.now()
-        }));
+        let html = '';
+        for (let repeat = 0; repeat < 3; repeat++) {
+            newsItems.forEach((item, idx) => {
+                let icon = 'fas fa-star';
+                if (item.includes('عاجل') || item.includes('هام')) icon = 'fas fa-bolt';
+                else if (item.includes('تحديث')) icon = 'fas fa-sync-alt';
+                else if (item.includes('جديد')) icon = 'fas fa-gift';
+                else if (item.includes('🎉')) icon = 'fas fa-party-horn';
+                
+                html += `<div class="news-item"><i class="${icon} news-icon"></i><span>${escapeHtmlNews(item)}</span></div>`;
+                if (idx < newsItems.length - 1) html += `<span class="news-separator">✦</span>`;
+            });
+            if (repeat < 2) html += `<span class="news-separator" style="margin:0 25px;">◆ ◆ ◆</span>`;
+        }
         
-        displayNewsTicker(newsItems);
-        newsBar.style.display = 'flex';
+        newsContent.innerHTML = html;
+        
+        const ticker = document.querySelector('.news-ticker');
+        if (ticker) {
+            // إزالة الأنيميشن القديمة
+            ticker.style.animation = 'none';
+            // إعادة تعيين
+            ticker.offsetHeight;
+            // حساب السرعة
+            const contentWidth = newsContent.scrollWidth;
+            const duration = Math.max(30, Math.min(80, contentWidth / 40));
+            // تعيين الأنيميشن الجديدة
+            ticker.style.animation = `tickerScroll ${duration}s linear infinite`;
+            console.log(`✅ سرعة الشريط: ${duration} ثانية`);
+        }
         
     } catch (error) {
         console.error('خطأ في تحميل الأخبار:', error);
-        displayNewsTicker(['تعذر تحميل الأخبار، يرجى المحاولة لاحقاً']);
-        newsBar.style.display = 'flex';
+        const newsContentElem = document.getElementById('newsTickerContent');
+        if (newsContentElem) {
+            newsContentElem.innerHTML = '<div class="news-item">⚠️ تعذر تحميل الأخبار</div>';
+        }
+        const newsBarElem = document.getElementById('newsBar');
+        if (newsBarElem) newsBarElem.style.display = 'flex';
     }
 }
 
-function displayNewsTicker(newsItems) {
-    const container = document.getElementById('newsTickerContent');
-    if (!container) return;
-    
-    let html = '';
-    // نكرر الأخبار مرتين لإنشاء حلقة لا نهائية (لأننا نريد أن يمر المحتوى كاملاً ثم يعيد)
-    for (let repeat = 0; repeat < 2; repeat++) {
-        newsItems.forEach((item, idx) => {
-            // إضافة أيقونة مميزة لكل خبر (يمكن تغييرها حسب المحتوى)
-            let icon = 'fas fa-star';
-            if (item.includes('عاجل') || item.includes('هام')) icon = 'fas fa-bolt';
-            else if (item.includes('تحديث')) icon = 'fas fa-sync-alt';
-            else if (item.includes('جديد')) icon = 'fas fa-gift';
-            
-            html += `
-                <div class="news-item">
-                    <i class="${icon} news-icon"></i>
-                    <span>${escapeHtml(item)}</span>
-                </div>
-            `;
-            // إضافة فاصل مميز بين الأخبار (باستثناء آخر خبر)
-            if (idx < newsItems.length - 1) {
-                html += `<span class="news-separator">✦</span>`;
-            }
+// دالة تنظيف النص من الرموز الضارة
+function escapeHtmlNews(str) {
+    if (!str) return '';
+    return str
+        .replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        })
+        .replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, function(c) {
+            return c; // الحفاظ على الرموز التعبيرية (Emoji)
         });
-        // إضافة فاصل طويل بين التكرارات (اختياري)
-        if (repeat === 0) {
-            html += `<span class="news-separator" style="margin:0 20px;">◆ ◆ ◆</span>`;
-        }
+}
+
+// تهيئة شريط الأخبار (يتم استدعاؤها بعد تسجيل الدخول)
+function initNewsBar() {
+    const newsBar = document.getElementById('newsBar');
+    if (!newsBar) {
+        console.error('❌ لم يتم العثور على شريط الأخبار');
+        return;
     }
-    
-    container.innerHTML = html;
-    
-    // إعادة تعيين مدة الحركة حسب طول المحتوى (لتحسين السرعة)
+    console.log('🔄 جاري تهيئة شريط الأخبار...');
+    newsBar.style.display = 'flex';
+    loadNewsFromDrive();
+}
+
+// دالة إعادة ضبط سرعة الشريط (اختيارية - يمكن استدعاؤها يدوياً)
+function setNewsTickerSpeed(seconds) {
     const ticker = document.querySelector('.news-ticker');
     if (ticker) {
-        const contentWidth = container.scrollWidth;
-        const speed = Math.max(20, Math.min(50, contentWidth / 50));
-        ticker.style.animationDuration = `${speed}s`;
+        ticker.style.animation = 'none';
+        ticker.offsetHeight;
+        ticker.style.animation = `scrollTicker ${seconds}s linear infinite`;
+        console.log(`✅ تم تغيير سرعة الشريط إلى ${seconds} ثانية`);
     }
 }
 
-// دالة مساعدة لتجنب XSS
-function escapeHtml(str) {
-    return str.replace(/[&<>]/g, function(m) {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        return m;
-    }).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, function(c) {
-        return c;
-    });
-}
-
-window.closeNewsBar = function() {
-    const newsBar = document.getElementById('newsBar');
-    if (newsBar) {
-        newsBar.style.display = 'none';
-        sessionStorage.setItem('newsClosed', 'true');
-    }
-};
-
-function shouldShowNews() {
-    return sessionStorage.getItem('newsClosed') !== 'true';
-}
+window.initNewsBar = initNewsBar;
 
 function toggleNewsBar() {
     const newsBar = document.getElementById('newsBar');
-    const toggleBtn = document.getElementById('newsToggleBtn');
-    
-    if (!newsBar) return;
-    
-    if (newsBar.style.display === 'flex') {
-        newsBar.style.display = 'none';
-        localStorage.setItem('newsBarHidden', 'true');
-        if (toggleBtn) toggleBtn.innerHTML = '<i class="fas fa-newspaper"></i>';
-    } else {
-        newsBar.style.display = 'flex';
-        localStorage.setItem('newsBarHidden', 'false');
-        if (toggleBtn) toggleBtn.innerHTML = '<i class="fas fa-times"></i>';
-    }
-}
-
-// استعادة الحالة عند تحميل الصفحة
-function restoreNewsBarState() {
-    const newsBar = document.getElementById('newsBar');
-    if (!newsBar) return;
-    
-    // دائماً نعرض الشريط
-    newsBar.style.display = 'flex';
-    localStorage.setItem('newsBarHidden', 'false');
-}
-
-function initNewsBar() {
-    // تحميل الأخبار دون التحقق من حالة الإخفاء (نريدها ظاهرة دائماً)
-    loadNewsFromDrive();
-    
-    // التأكد من أن الشريط ظاهر
-    const newsBar = document.getElementById('newsBar');
     if (newsBar) {
-        newsBar.style.display = 'flex';
-    }
-    
-    // إزالة أي تفضيلات سابقة للإخفاء
-    localStorage.removeItem('newsBarHidden');
-}
-
-
-
-// تسجيل Service Worker (أضف هذا الكود في بداية script.js أو بعد تحميل الصفحة)
-
-async function registerServiceWorker() {
-    if (!('serviceWorker' in navigator)) return false;
-    try {
-        // ✅ تغيير المسار هنا
-        const registration = await navigator.serviceWorker.register('/dataconnect/sw.js');
-        console.log('✅ Service Worker تم تسجيله بنجاح', registration);
-        return registration;
-    } catch (error) {
-        console.error('❌ فشل تسجيل Service Worker:', error);
-        return false;
-    }
-}
-
-// تشغيل التسجيل عند تحميل الصفحة
-document.addEventListener('DOMContentLoaded', () => {
-    registerServiceWorker();
-});	
-
-
-// ============================================
-// إعدادات الإشعارات الفورية
-// ============================================
-
-// رابط الـ Worker الخاص بك - غيّره إلى الرابط الحقيقي
-const WORKER_URL = 'https://notification-worker.your-username.workers.dev'; // ⚠️ غيّر هذا
-
-// دالة تحويل المفتاح Base64 إلى Uint8Array (لازمة لـ VAPID مؤقتاً)
-function urlBase64ToUint8Array(base64String) {
-    const padding = '='.repeat((4 - base64String.length % 4) % 4);
-    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-    const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-    for (let i = 0; i < rawData.length; ++i) {
-        outputArray[i] = rawData.charCodeAt(i);
-    }
-    return outputArray;
-}
-
-// دالة تسجيل الاشتراك في الإشعارات
-async function subscribeToPushNotifications() {
-    // التحقق من دعم المتصفح
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-        console.log('⚠️ المتصفح لا يدعم الإشعارات الفورية');
-        return false;
-    }
-    
-    try {
-        // طلب إذن المستخدم
-        const permission = await Notification.requestPermission();
-        if (permission !== 'granted') {
-            console.log('❌ المستخدم رفض الإشعارات');
-            return false;
-        }
-        
-        // انتظار Service Worker
-        const registration = await navigator.serviceWorker.ready;
-        
-        // مفتاح VAPID مؤقت للتجربة (سنستبدله لاحقاً بمفتاح حقيقي)
-        const VAPID_PUBLIC_KEY = 'BFnReKZQqTjYk7y8x7n9mXo2LhV4GcJkLpQwErTyUiOpAsDfGhJkLzXcVbNmQwErTyUiOpAsDfG';
-        
-        // إنشاء اشتراك
-        const subscription = await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-        });
-        
-        // إرسال الاشتراك إلى الـ Worker
-        const response = await fetch(`${WORKER_URL}/api/subscribe`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(subscription)
-        });
-        
-        const result = await response.json();
-        if (result.success) {
-            console.log('✅ تم الاشتراك في الإشعارات بنجاح');
-            return true;
+        if (newsBar.style.display === 'none') {
+            newsBar.style.display = 'flex';
         } else {
-            console.log('❌ فشل الاشتراك:', result.message);
-            return false;
-        }
-    } catch (error) {
-        console.error('❌ خطأ في الاشتراك:', error);
-        return false;
-    }
-}
-
-// دالة إرسال إشعار تجريبي (تستدعى يدوياً للاختبار)
-async function sendTestNotification() {
-    try {
-        const response = await fetch(`${WORKER_URL}/api/test-notification`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        const result = await response.json();
-        console.log('📨 نتيجة إرسال الإشعار:', result);
-        return result;
-    } catch (error) {
-        console.error('❌ خطأ:', error);
-    }
-}
-
-// تهيئة الإشعارات (تستدعى عند تحميل الصفحة)
-async function initNotifications() {
-    // التحقق من وجود Service Worker أولاً
-    if (!('serviceWorker' in navigator)) return;
-    
-    // تسجيل Service Worker إذا لم يكن مسجلاً
-    if (!navigator.serviceWorker.controller) {
-        try {
-            await navigator.serviceWorker.register('/dataconnect/sw.js');
-            console.log('✅ Service Worker مسجل');
-        } catch (error) {
-            console.error('❌ فشل تسجيل Service Worker:', error);
-            return;
+            newsBar.style.display = 'none';
         }
     }
-    
-    // الاشتراك في الإشعارات
-    await subscribeToPushNotifications();
-}
-
-// تشغيل تهيئة الإشعارات عند تحميل الصفحة (بعد تسجيل الدخول)
-async function setupNotifications() {
-    if ('serviceWorker' in navigator) {
-        try {
-            let registration = await navigator.serviceWorker.getRegistration('/dataconnect/sw.js');
-            if (!registration) {
-                registration = await navigator.serviceWorker.register('/dataconnect/sw.js');
-            }
-            console.log('✅ Service Worker جاهز');
-            await subscribeToPush();
-        } catch (error) {
-            console.error('❌ فشل الإعداد:', error);
-        }
-    }
-}
-
-// ============================================
-// نظام الإشعارات التلقائية للفواتير الجديدة - النسخة النهائية
-// ============================================
-
-// دالة للتحقق من الفواتير الجديدة وإرسال إشعار تلقائي
-// ============================================
-// نظام الإشعارات التلقائية للفواتير الجديدة
-// ============================================
-
-async function checkNewInvoicesAndNotify() {
-    // التأكد من وجود فواتير ومستخدم مسجل
-    if (!invoicesData || invoicesData.length === 0) {
-        console.log('⚠️ لا توجد فواتير للتحقق');
-        return;
-    }
-    if (!currentUser) {
-        console.log('⚠️ لا يوجد مستخدم مسجل');
-        return;
-    }
-    
-    // جلب آخر عدد فواتير مسجل من التخزين المحلي
-    const lastInvoiceCount = localStorage.getItem('lastInvoiceCount');
-    const currentCount = invoicesData.length;
-    
-    console.log(`📊 آخر عدد مسجل: ${lastInvoiceCount}, العدد الحالي: ${currentCount}`);
-    
-    // إذا كانت هذه هي المرة الأولى (لا يوجد رقم مسجل)
-    if (!lastInvoiceCount) {
-        localStorage.setItem('lastInvoiceCount', currentCount);
-        console.log('📊 تم تسجيل العدد الحالي للفواتير:', currentCount);
-        return;
-    }
-    
-    // حساب عدد الفواتير الجديدة
-    const oldCount = parseInt(lastInvoiceCount);
-    const newCount = currentCount - oldCount;
-    
-    // إذا تم العثور على فواتير جديدة
-    if (newCount > 0) {
-        console.log(`🆕 اكتشاف ${newCount} فواتير جديدة!`);
-        
-        // ========== 1. إشعار المتصفح ==========
-        if (Notification.permission === 'granted') {
-            try {
-                const notification = new Notification('📄 فواتير جديدة', {
-                    body: `تم إضافة ${newCount} فواتير جديدة إلى النظام. يرجى معاينتها.`,
-                    icon: 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
-                    requireInteraction: true,
-                    silent: false,
-                    tag: 'new-invoices'
-                });
-                
-                notification.onclick = function() {
-                    window.focus();
-                    notification.close();
-                };
-                
-                console.log('✅ تم إرسال إشعار المتصفح بنجاح');
-            } catch(e) {
-                console.error('❌ فشل إرسال إشعار المتصفح:', e);
-            }
-        } else {
-            console.log(`⚠️ لا يمكن إرسال إشعار المتصفح - حالة الإذن: ${Notification.permission}`);
-        }
-        
-        // ========== 2. إرسال إيميل ==========
-        if (typeof sendEmailNotification === 'function') {
-            try {
-                await sendEmailNotification(
-                    ADMIN_EMAIL,
-                    `📄 ${newCount} فواتير جديدة`,
-                    `<h2>📄 فواتير جديدة</h2>
-                     <p>تم إضافة ${newCount} فواتير جديدة إلى النظام.</p>
-                     <p><strong>العدد الإجمالي:</strong> ${currentCount} فاتورة</p>
-                     <p><strong>عدد الفواتير الجديدة:</strong> ${newCount}</p>
-                     <p>يرجى تسجيل الدخول لعرضها:</p>
-                     <a href="https://revenudchc-boop.github.io/dataconnect/">👉 رابط النظام</a>
-                     <hr>
-                     <p style="color: #666; font-size: 12px;">تم الإرسال تلقائياً من نظام الفواتير - ${new Date().toLocaleString('ar-EG')}</p>`
-                );
-                console.log('✅ تم إرسال الإيميل بنجاح');
-            } catch(e) {
-                console.error('❌ فشل إرسال الإيميل:', e);
-            }
-        }
-        
-        // ========== 3. تحديث العدد المسجل ==========
-        localStorage.setItem('lastInvoiceCount', currentCount);
-        
-        // ========== 4. مزامنة العدد مع Drive و Cloudflare ==========
-        if (typeof syncInvoiceCount === 'function') {
-            await syncInvoiceCount();
-        }
-        
-        // ========== 5. إشعار داخلي في الموقع ==========
-        if (typeof showNotification === 'function') {
-            showNotification(`📢 يوجد ${newCount} فواتير جديدة`, 'info');
-        }
-        
-    } else {
-        console.log('✅ لا توجد فواتير جديدة');
-    }
-}
-
-// دالة لإعادة تعيين عداد الفواتير (يمكن للمدير استخدامها)
-function resetInvoiceCounter() {
-    if (invoicesData && invoicesData.length) {
-        localStorage.setItem('lastInvoiceCount', invoicesData.length);
-        console.log('🔄 تم إعادة تعيين العداد إلى:', invoicesData.length);
-        showNotification('تم إعادة تعيين عداد الفواتير', 'success');
-    } else {
-        localStorage.removeItem('lastInvoiceCount');
-        console.log('🔄 تم مسح عداد الفواتير');
-    }
-}
-
-// دالة طلب إذن الإشعارات (تظهر مرة واحدة فقط)
-function requestNotificationPermission() {
-    if (!("Notification" in window)) {
-        console.log("⚠️ المتصفح لا يدعم الإشعارات");
-        return;
-    }
-    
-    if (Notification.permission === "default") {
-        Notification.requestPermission().then(permission => {
-            if (permission === "granted") {
-                console.log("✅ تم تفعيل الإشعارات");
-                new Notification("✅ نظام الفواتير", {
-                    body: "الإشعارات مفعلة، سيتم إعلامك بالفواتير الجديدة",
-                    icon: "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
-                });
-            }
-        });
-    } else if (Notification.permission === "granted") {
-        console.log("✅ الإشعارات مفعلة مسبقاً");
-    } else {
-        console.log("⚠️ الإشعارات محظورة، قم بتفعيلها من إعدادات المتصفح");
-    }
-}
-
-// دالة لإعادة طلب الإذن
-async function requestNotificationAgain() {
-    if (Notification.permission === 'denied') {
-        console.log('⚠️ الإشعارات محظورة. يرجى تفعيلها من إعدادات المتصفح');
-        
-        // محاولة طلب الإذن مرة أخرى (قد لا تعمل إذا كان محظوراً)
-        const permission = await Notification.requestPermission();
-        console.log('حالة الإذن بعد المحاولة:', permission);
-        
-        if (permission === 'granted') {
-            new Notification('✅ تم التفعيل', {
-                body: 'الإشعارات تعمل الآن'
-            });
-        }
-    }
-}
-
-// استدعاء الدالة
-requestNotificationAgain();
-
-// دالة تحديث معلومات الفواتير للمزامنة مع Cloudflare
-async function updateInvoiceInfo() {
-    try {
-        const info = {
-            count: invoicesData.length,
-            lastUpdated: new Date().toISOString(),
-            fileSize: JSON.stringify(invoicesData).length
-        };
-        
-        // تخزين محلياً
-        localStorage.setItem('invoiceInfo', JSON.stringify(info));
-        
-        // إرسال إلى Cloudflare Worker إذا كان متاحاً
-        if (typeof syncInvoiceCount === 'function') {
-            await syncInvoiceCount();
-        }
-    } catch(e) { 
-        console.error('فشل تحديث معلومات الفواتير:', e); 
-    }
-}
-
-// دالة مزامنة العدد مع Cloudflare Worker
-async function syncInvoiceCount() {
-    if (!invoicesData) return;
-    
-    try {
-        // ✅ استخدم الرابط الخاص بك (وليس your-username)
-        const WORKER_URL = 'https://invoice-notifier.revenudchc.workers.dev';
-        
-        const response = await fetch(`${WORKER_URL}/api/update-count`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ count: invoicesData.length })
-        });
-        
-        if (response.ok) {
-            console.log('✅ تم مزامنة عدد الفواتير مع الخادم:', invoicesData.length);
-        } else {
-            console.log('⚠️ فشل المزامنة - رمز الخطأ:', response.status);
-        }
-    } catch (error) {
-        console.error('❌ فشل المزامنة مع الخادم:', error);
-    }
-}
-
-
-// الاشتراك في Push Notifications
-async function subscribeToPush() {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-        console.log('⚠️ Push API غير مدعوم');
-        return false;
-    }
-    
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-        console.log('❌ إذن الإشعارات غير ممنوح');
-        return false;
-    }
-    
-    try {
-        const WORKER_URL = 'https://invoice-notifier.revenudchc.workers.dev';
-        
-        // الحصول على المفتاح العام
-        const keyResponse = await fetch(`${WORKER_URL}/api/vapid-key`);
-        const { publicKey } = await keyResponse.json();
-        
-        // تحويل المفتاح
-        function urlBase64ToUint8Array(base64String) {
-            const padding = '='.repeat((4 - base64String.length % 4) % 4);
-            const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-            const rawData = window.atob(base64);
-            const outputArray = new Uint8Array(rawData.length);
-            for (let i = 0; i < rawData.length; ++i) {
-                outputArray[i] = rawData.charCodeAt(i);
-            }
-            return outputArray;
-        }
-        
-        const registration = await navigator.serviceWorker.ready;
-        const subscription = await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(publicKey)
-        });
-        
-        // إرسال الاشتراك إلى الخادم
-        await fetch(`${WORKER_URL}/api/subscribe`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(subscription)
-        });
-        
-        console.log('✅ تم الاشتراك في Push Notifications بنجاح');
-        return true;
-        
-    } catch (error) {
-        console.error('❌ فشل الاشتراك:', error);
-        return false;
-    }
-}
-
-// استدعاء الاشتراك بعد تسجيل الدخول
-if (currentUser) {
-    setTimeout(() => {
-        subscribeToPush();
-    }, 3000);
-}
-
-// ============================================
-// دوال إدارة عدد الفواتير على Drive
-// ============================================
-
-// قراءة عدد الفواتير من Drive
-// قراءة عدد الفواتير من Drive (من ملف TXT)
-async function readInvoiceCountFromDrive() {
-    if (!driveConfig.infoFileId) {
-        console.log('⚠️ infoFileId غير متوفر');
-        return null;
-    }
-    
-    try {
-        // ✅ استخدام مفتاح API للقراءة (أسهل)
-        const url = `https://www.googleapis.com/drive/v3/files/${driveConfig.infoFileId}?alt=media&key=${driveConfig.apiKey}`;
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
-        const content = await response.text();
-        const count = parseInt(content, 10);
-        
-        if (isNaN(count)) throw new Error('المحتوى ليس رقماً صالحاً');
-        
-        console.log('📊 تم قراءة العدد من Drive (TXT):', count);
-        return { count: count, lastUpdated: new Date().toISOString() };
-    } catch (error) {
-        console.error('❌ فشل قراءة عدد الفواتير من Drive:', error);
-        return null;
-    }
-}
-
-// كتابة عدد الفواتير إلى Drive
-// كتابة عدد الفواتير إلى Drive (باستخدام TXT)
-async function writeInvoiceCountToDrive(count) {
-    if (!driveConfig.infoFileId) {
-        console.log('⚠️ infoFileId غير متوفر');
-        return false;
-    }
-    
-    if (!driveAccessToken) {
-        try {
-            await refreshAccessToken();
-        } catch (error) {
-            console.error('❌ فشل تجديد التوكن:', error);
-            return false;
-        }
-    }
-    
-    // ✅ نفس طريقة saveViewedToDrive: قراءة الملف أولاً ثم تحديثه
-    try {
-        // 1. قراءة المحتوى الحالي (للتأكد من وجود الملف)
-        const readResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${driveConfig.infoFileId}?alt=media`, {
-            headers: { 'Authorization': `Bearer ${driveAccessToken}` }
-        });
-        
-        if (!readResponse.ok) {
-            throw new Error(`فشل قراءة الملف: ${readResponse.status}`);
-        }
-        
-        // 2. كتابة المحتوى الجديد (نفس طريقة saveViewedToDrive)
-        const content = count.toString();
-        const saveResponse = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveConfig.infoFileId}?uploadType=media`, {
-            method: 'PATCH',
-            headers: {
-                'Authorization': `Bearer ${driveAccessToken}`,
-                'Content-Type': 'text/plain'
-            },
-            body: content
-        });
-        
-        if (saveResponse.ok) {
-            console.log('✅ تم حفظ عدد الفواتير في Drive (مثل viewed data):', count);
-            return true;
-        } else {
-            const errorText = await saveResponse.text();
-            console.error('❌ فشل الحفظ:', errorText);
-            return false;
-        }
-    } catch (error) {
-        console.error('❌ خطأ في الحفظ:', error);
-        return false;
-    }
-}
-
-// مزامنة العدد مع Drive و Cloudflare
-async function syncInvoiceCount() {
-    if (!invoicesData) return;
-    const count = invoicesData.length;
-    
-    console.log('🔄 جاري مزامنة العدد:', count);
-    await writeInvoiceCountToDrive(count);
-    
-    try {
-        const WORKER_URL = 'https://invoice-notifier.revenudchc.workers.dev';
-        await fetch(`${WORKER_URL}/api/update-count`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ count: count })
-        });
-        console.log('✅ تم مزامنة العدد مع Cloudflare:', count);
-    } catch(e) {
-        console.error('❌ فشل المزامنة مع Cloudflare:', e);
-    }
-}
-
-// تحميل العدد المسجل من Drive عند بدء التشغيل
-async function loadInitialInvoiceCount() {
-    const info = await readInvoiceCountFromDrive();
-    if (info && info.count) {
-        localStorage.setItem('lastInvoiceCount', info.count);
-        console.log('📊 تم تحميل العدد المسجل من Drive:', info.count);
-    } else {
-        console.log('⚠️ لم يتم العثور على عدد مسجل في Drive');
-    }
-}
-
-// ============================================
-// إرسال الإيميلات عبر Cloudflare Worker
-// ============================================
-
-// ============================================
-// إرسال الإيميلات عبر Cloudflare Worker
-// ============================================
-
-async function sendEmailNotification(to, subject, html) {
-    try {
-        const response = await fetch('https://invoice-notifier.revenudchc.workers.dev/api/send-email', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ to, subject, html })
-        });
-        const result = await response.json();
-        console.log('📧 نتيجة إرسال الإيميل:', result);
-        return response.ok;
-    } catch (error) {
-        console.error('❌ فشل إرسال الإيميل:', error);
-        return false;
-    }
-}
-
-// دالة اختبار
-async function testEmail() {
-    const result = await sendEmailNotification(
-        'revenudchc@gmail.com',
-        '🧪 اختبار نظام الفواتير',
-        '<h1>✅ نجح الإعداد!</h1><p>الإيميل يعمل من خلال Cloudflare Worker.</p>'
-    );
-    console.log(result ? '✅ تم إرسال الإيميل' : '❌ فشل الإرسال');
 }
