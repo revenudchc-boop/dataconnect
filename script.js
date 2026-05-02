@@ -7284,7 +7284,7 @@ async function loadNewsFromDrive() {
         return;
     }
 
-    const newsUrl = 'https://raw.githubusercontent.com/revenudchc-boop/dataconnect/main/news.txt';
+    const newsUrl = 'https://raw.githubusercontent.com/revenudchc-boop/DCHC/main/news.txt';
 
     try {
         newsContent.innerHTML = '<div class="news-item"><i class="fas fa-spinner fa-spin"></i> جاري تحميل الأخبار...</div>';
