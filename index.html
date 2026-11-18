@@ -394,17 +394,18 @@
         </div>
     </div>
 
-    <!-- نافذة إدارة المستخدمين -->
+<!-- نافذة إدارة المستخدمين -->
     <div id="userManagementModal" class="modal">
-        <div class="modal-content" style="max-width: 1100px;">
+        <div class="modal-content" style="max-width: 1150px;">
             <div class="modal-header">
                 <h2>إدارة المستخدمين</h2>
                 <span class="close-button" onclick="closeUserManagementModal()">&times;</span>
             </div>
             <div class="modal-body">
-                <div style="margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
+                <div style="margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
                     <button class="btn btn-primary" onclick="showAddUserForm()"><i class="fas fa-user-plus"></i> إضافة مستخدم</button>
-					<button class="btn btn-success" onclick="saveUsersManually()"><i class="fas fa-sync-alt"></i> تحديث القائمة</button>
+                    <button class="btn btn-success" onclick="saveUsersManually()"><i class="fas fa-sync-alt"></i> تحديث القائمة</button>
+                    <input type="text" id="userSearchInput" oninput="renderUsersTable()" placeholder="🔍 بحث باسم المستخدم أو البريد أو الرقم الضريبي..." style="flex: 1; min-width: 220px; padding: 9px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text);">
                 </div>
                 <div class="users-table-container">
                     <table class="users-table">
@@ -414,7 +415,7 @@
                                 <th>البريد الإلكتروني</th>
                                 <th>الرقم الضريبي</th>
                                 <th>رقم العقد</th>
-								<th>المعرفات الإضافية</th>
+                                <th>المعرفات الإضافية</th>
                                 <th>نوع المستخدم</th>
                                 <th>الحالة</th>
                                 <th>آخر دخول</th>
@@ -424,16 +425,21 @@
                         <tbody id="usersTableBody"></tbody>
                     </table>
                 </div>
+
                 <!-- نموذج إضافة/تعديل مستخدم -->
-                <div id="userForm" style="display: none; margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 10px;">
+                <div id="userForm" style="display: none; margin-top: 25px; padding: 20px; background: var(--bg-hover); border: 1px solid var(--border); border-radius: 10px;">
                     <h3 id="userFormTitle">إضافة مستخدم جديد</h3>
                     <div class="form-group">
                         <label>اسم المستخدم</label>
                         <input type="text" id="editUsername" placeholder="أدخل اسم المستخدم">
                     </div>
                     <div class="form-group">
-                        <label>البريد الإلكتروني</label>
+                        <label>البريد الإلكتروني الرئيسي</label>
                         <input type="email" id="editEmail" placeholder="أدخل البريد الإلكتروني">
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-envelope"></i> إيميلات إضافية للإشعارات (اختياري)</label>
+                        <input type="text" id="editAdditionalEmails" placeholder="مفصولة بفواصل، مثال: a@co.com, b@co.com">
                     </div>
                     <div class="form-group">
                         <label><i class="fas fa-building"></i> الرقم الضريبي (للفواتير النقدية)</label>
@@ -444,11 +450,28 @@
                         <input type="text" id="editContractCustomerId" placeholder="أدخل رقم العقد">
                         <small class="form-text">هذا الرقم يربط الفواتير الآجلة بالمستخدم</small>
                     </div>
-					<div class="form-group">
-						<label><i class="fas fa-id-card"></i> المعرفات الإضافية (customer-id)</label>
-						<input type="text" id="editCustomerIds" placeholder="أدخل المعرفات مفصولة بفواصل، مثال: MSC,202487288,user001">
-						<small class="form-text">هذه المعرفات تسمح للمستخدم برؤية الفواتير التي تحتوي على أي منها (سواء في payee-customer-id أو contract-customer-id).</small>
-					</div>
+                    <div class="form-group">
+                        <label><i class="fas fa-id-card"></i> المعرفات الإضافية (customer-id)</label>
+                        <input type="text" id="editCustomerIds" placeholder="أدخل المعرفات مفصولة بفواصل، مثال: MSC,202487288,user001">
+                        <small class="form-text">تسمح للمستخدم برؤية الفواتير التي تحتوي على أي منها.</small>
+                    </div>
+                    <div class="row">
+                        <div class="col">
+                            <div class="form-group">
+                                <label><i class="fas fa-calendar"></i> تاريخ بداية الحساب (لكشف الحساب)</label>
+                                <input type="date" id="editStartDate">
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="form-group">
+                                <label><i class="fas fa-language"></i> لغة الإشعارات</label>
+                                <select id="editLanguage">
+                                    <option value="ar">العربية</option>
+                                    <option value="en">English</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
                     <div class="form-group">
                         <label>نوع المستخدم</label>
                         <select id="editUserType">
@@ -460,13 +483,13 @@
                     <div class="form-group">
                         <label>كلمة المرور</label>
                         <input type="password" id="editPassword" placeholder="أدخل كلمة المرور">
-                        <small class="form-text">اتركها فارغة إذا لم ترد التغيير (في حالة التعديل)</small>
+                        <small class="form-text">مطلوبة عند الإضافة الجديدة (6 أحرف فأكثر)</small>
                     </div>
                     <div class="form-group">
                         <label>الحالة</label>
                         <select id="editStatus">
                             <option value="active">نشط</option>
-                            <option value="inactive">غير نشط</option>
+                            <option value="inactive">غير نشط (تعطيل الدخول)</option>
                         </select>
                     </div>
                     <div style="display: flex; gap: 10px;">
