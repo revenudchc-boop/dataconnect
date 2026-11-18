@@ -156,7 +156,7 @@ window.FB = {
         return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
     },
 
-    async createUser(userData) {
+async createUser(userData) {
         const authEmail = await usernameToAuthEmail(userData.username);
         let newUid;
         try {
@@ -170,12 +170,14 @@ window.FB = {
             username: userData.username.trim(),
             email: (userData.email || '').trim(),
             additionalEmails: Array.isArray(userData.additionalEmails) ? userData.additionalEmails : [],
+            ccEmails: Array.isArray(userData.ccEmails) ? userData.ccEmails : [],
             taxNumber: (userData.taxNumber || '').trim(),
             contractCustomerId: (userData.contractCustomerId || '').trim(),
             customerIds: Array.isArray(userData.customerIds) ? userData.customerIds : [],
             userType: userData.userType || 'customer',
             status: userData.status || 'active',
             startDate: userData.startDate || null,
+            language: userData.language || 'ar',
             createdAt: new Date().toISOString(),
             lastLogin: null
         };
@@ -188,9 +190,12 @@ window.FB = {
     async updateUser(userId, userData) {
         const updatePayload = {
             email: (userData.email || '').trim(),
+            additionalEmails: Array.isArray(userData.additionalEmails) ? userData.additionalEmails : [],
             taxNumber: (userData.taxNumber || '').trim(),
             contractCustomerId: (userData.contractCustomerId || '').trim(),
             customerIds: Array.isArray(userData.customerIds) ? userData.customerIds : [],
+            startDate: userData.startDate || null,
+            language: userData.language || 'ar',
             userType: userData.userType || 'customer',
             status: userData.status || 'active'
         };

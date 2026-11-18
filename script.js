@@ -1971,10 +1971,19 @@ window.refreshUsersFromDrive = async function() {
 function renderUsersTable() {
     const tbody = document.getElementById('usersTableBody');
     if (!tbody) return;
-    tbody.innerHTML = users.map(u => `
+    const q = (document.getElementById('userSearchInput')?.value || '').trim().toLowerCase();
+    const list = !q ? users : users.filter(u =>
+        (u.username || '').toLowerCase().includes(q) ||
+        (u.email || '').toLowerCase().includes(q) ||
+        (u.taxNumber || '').toLowerCase().includes(q) ||
+        (u.contractCustomerId || '').toLowerCase().includes(q) ||
+        (u.customerIds || []).join(',').toLowerCase().includes(q)
+    );
+
+    tbody.innerHTML = list.map(u => `
         <tr>
             <td>${escapeHtml(u.username)}</td>
-            <td>${escapeHtml(u.email)}</td>
+            <td>${escapeHtml(u.email || '-')}</td>
             <td>${escapeHtml(u.taxNumber || '-')}</td>
             <td>${escapeHtml(u.contractCustomerId || '-')}</td>
             <td>${escapeHtml((u.customerIds || []).join(', ') || '-')}</td>
@@ -1982,13 +1991,13 @@ function renderUsersTable() {
             <td><span class="status-badge ${escapeHtml(u.status)}">${u.status === 'active' ? 'نشط' : 'غير نشط'}</span></td>
             <td>${u.lastLogin ? new Date(u.lastLogin).toLocaleString('ar-EG') : 'لم يسجل'}</td>
             <td>
-                <button class="action-btn edit" data-uid="${escapeHtml(u.id)}" onclick="editUser(this.dataset.uid)"><i class="fas fa-edit"></i></button>
-                <button class="action-btn reset" data-uid="${escapeHtml(u.id)}" onclick="resetUserPassword(this.dataset.uid)"><i class="fas fa-key"></i></button>
-                <button class="action-btn delete" data-uid="${escapeHtml(u.id)}" onclick="deleteUser(this.dataset.uid)"><i class="fas fa-trash"></i></button>
+                <button class="action-btn edit" title="تعديل" data-uid="${escapeHtml(u.id)}" onclick="editUser(this.dataset.uid)"><i class="fas fa-edit"></i></button>
+                <button class="action-btn reset" title="تغيير كلمة المرور" data-uid="${escapeHtml(u.id)}" onclick="resetUserPassword(this.dataset.uid)"><i class="fas fa-key"></i></button>
+                <button class="action-btn delete" title="حذف" data-uid="${escapeHtml(u.id)}" onclick="deleteUser(this.dataset.uid)"><i class="fas fa-trash"></i></button>
             </td>
         </tr>
     `).join('');
-}
+}	
 
 window.showUserManagement = async function() {
     if (!currentUser || currentUser.userType !== 'admin') return alert('غير مصرح');
@@ -2007,11 +2016,17 @@ window.showAddUserForm = function() {
     if (!currentUser || currentUser.userType !== 'admin') return alert('غير مصرح');
     currentEditingUserId = null;
     document.getElementById('userFormTitle').textContent = 'إضافة مستخدم جديد';
-    ['editUsername', 'editEmail', 'editTaxNumber', 'editContractCustomerId', 'editPassword', 'editCustomerIds'].forEach(id => document.getElementById(id).value = '');
+    ['editUsername', 'editEmail', 'editAdditionalEmails', 'editTaxNumber', 'editContractCustomerId', 'editPassword', 'editCustomerIds', 'editStartDate'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
     document.getElementById('editUsername').readOnly = false;
+    document.getElementById('editLanguage').value = 'ar';
     document.getElementById('editUserType').value = 'customer';
     document.getElementById('editStatus').value = 'active';
-    document.getElementById('userForm').style.display = 'block';
+    const formEl = document.getElementById('userForm');
+    formEl.style.display = 'block';
+    formEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 };
 
 window.editUser = function(userId) {
@@ -2019,17 +2034,22 @@ window.editUser = function(userId) {
     const user = users.find(u => u.id === userId);
     if (!user) return;
     currentEditingUserId = userId;
-    document.getElementById('userFormTitle').textContent = 'تعديل المستخدم';
+    document.getElementById('userFormTitle').textContent = 'تعديل المستخدم: ' + user.username;
     document.getElementById('editUsername').value = user.username;
     document.getElementById('editUsername').readOnly = true;
     document.getElementById('editEmail').value = user.email || '';
+    document.getElementById('editAdditionalEmails').value = (user.additionalEmails || []).filter(Boolean).join(', ');
     document.getElementById('editTaxNumber').value = user.taxNumber || '';
     document.getElementById('editContractCustomerId').value = user.contractCustomerId || '';
     document.getElementById('editCustomerIds').value = (user.customerIds || []).join(', ');
+    document.getElementById('editStartDate').value = user.startDate || '';
+    document.getElementById('editLanguage').value = user.language || 'ar';
     document.getElementById('editUserType').value = user.userType;
     document.getElementById('editPassword').value = '';
     document.getElementById('editStatus').value = user.status;
-    document.getElementById('userForm').style.display = 'block';
+    const formEl = document.getElementById('userForm');
+    formEl.style.display = 'block';
+    formEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 };
 
 function cancelUserForm() {
@@ -2041,9 +2061,12 @@ window.saveUserFromForm = async function() {
     if (!currentUser || currentUser.userType !== 'admin') return alert('غير مصرح');
     const username = document.getElementById('editUsername').value.trim();
     const email = document.getElementById('editEmail').value.trim();
+    const additionalEmailsRaw = document.getElementById('editAdditionalEmails')?.value.trim() || '';
     const taxNumber = document.getElementById('editTaxNumber').value.trim();
     const contractCustomerId = document.getElementById('editContractCustomerId').value.trim();
     const customerIdsRaw = document.getElementById('editCustomerIds').value.trim();
+    const startDate = document.getElementById('editStartDate')?.value || null;
+    const language = document.getElementById('editLanguage')?.value || 'ar';
     const userType = document.getElementById('editUserType').value;
     const password = document.getElementById('editPassword').value;
     const status = document.getElementById('editStatus').value;
@@ -2053,7 +2076,12 @@ window.saveUserFromForm = async function() {
         return alert('كلمة المرور مطلوبة ويجب أن لا تقل عن 6 أحرف');
     }
 
-    let customerIds = customerIdsRaw ? customerIdsRaw.split(',').map(id => id.trim()).filter(Boolean) : [];
+    const additionalEmails = additionalEmailsRaw
+        ? additionalEmailsRaw.split(',').map(e => e.trim()).filter(Boolean)
+        : [];
+    let customerIds = customerIdsRaw
+        ? customerIdsRaw.split(',').map(id => id.trim()).filter(Boolean)
+        : [];
     if (contractCustomerId && !customerIds.includes(contractCustomerId)) {
         customerIds.push(contractCustomerId);
     }
@@ -2061,7 +2089,7 @@ window.saveUserFromForm = async function() {
     try {
         if (currentEditingUserId) {
             await window.FB.updateUser(currentEditingUserId, {
-                email, taxNumber, contractCustomerId, customerIds, userType, status
+                email, additionalEmails, taxNumber, contractCustomerId, customerIds, startDate, language, userType, status
             });
             showNotification(
                 password ? 'تم تحديث البيانات (تغيير كلمة مرور مستخدم آخر يتطلب Cloud Functions)' : '✅ تم تحديث المستخدم بنجاح',
@@ -2069,7 +2097,7 @@ window.saveUserFromForm = async function() {
             );
         } else {
             await window.FB.createUser({
-                username, email, taxNumber, contractCustomerId, customerIds, userType, password, status
+                username, email, additionalEmails, taxNumber, contractCustomerId, customerIds, startDate, language, userType, password, status
             });
             showNotification('✅ تم إضافة المستخدم وحفظه في Firebase', 'success');
         }
