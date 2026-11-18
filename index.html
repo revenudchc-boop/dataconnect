@@ -49,6 +49,10 @@
             <a href="#" onclick="switchInvoiceType('credit')"><i class="fas fa-tags"></i> إشعارات خصم</a>
             <a href="#" onclick="openAllPaymentsView()"><i class="fas fa-money-bill-wave"></i> السدادات <span class="nav-badge" id="paymentsBadge" style="display:none;">0</span></a>
             <a href="#" onclick="openAccountStatement()"><i class="fas fa-file-invoice-dollar"></i> كشف حساب</a>
+			<a href="https://markingdchc.github.io/marking.dchc/" target="_blank" rel="noopener noreferrer" id="sidebarStorageLink">
+				<i class="fas fa-warehouse"></i> بيان التخزين
+				<i class="fas fa-external-link-alt" style="font-size:0.7em; opacity:0.6; margin-inline-start:auto;"></i>
+			</a>
             <div class="nav-section">إدارة</div>
             <a href="#" onclick="showReports('daily')"><i class="fas fa-chart-bar"></i> التقارير</a>
             <a href="#" onclick="showUserManagement()" id="sidebarAdminLink"><i class="fas fa-users-cog"></i> المستخدمين</a>
@@ -77,11 +81,11 @@
                 <button class="tab-btn" onclick="switchLoginTab('guest')">دخول زائر</button>
             </div>
             
-            <!-- نموذج تسجيل الدخول -->
+ <!-- نموذج تسجيل الدخول -->
             <div id="loginForm" class="login-form active">
                 <div class="form-group">
-                    <label><i class="fas fa-user"></i> اسم المستخدم أو البريد الإلكتروني</label>
-                    <input type="text" id="loginUsername" placeholder="أدخل اسم المستخدم أو البريد الإلكتروني">
+                    <label><i class="fas fa-user"></i> اسم المستخدم</label>
+                    <input type="text" id="loginUsername" placeholder="أدخل اسم المستخدم">
                 </div>
                 <div class="form-group">
                     <label><i class="fas fa-lock"></i> كلمة المرور</label>
@@ -150,11 +154,15 @@
                     <input type="file" id="fileInput" accept=".xml, .snx, .txt" hidden>
                 </label>
                 <!-- زر تحديث من Drive -->
-                <button class="btn btn-outline btn-sm" id="driveUpdateBtn" onclick="updateFromDrive()"><i class="fab fa-google-drive"></i> Drive</button>
+                <button class="btn btn-outline btn-sm" id="driveUpdateBtn" onclick="updateFromGitHub()"><i class="fab fa-github"></i> تحديث</button>
                 <!-- زر تصدير -->
                 <button class="btn btn-outline btn-sm" onclick="exportSelectedInvoices()"><i class="fas fa-file-pdf"></i> PDF</button>
                 <!-- زر سداد جديد -->
                 <button class="btn btn-accent btn-sm" onclick="openPaymentModal()"><i class="fas fa-plus"></i> سداد</button>
+							 <!-- ✅ أضف هذا الزر -->
+				<button class="btn btn-accent btn-sm" onclick="openOpeningBalanceModal()" id="openingBalanceBtn">
+					<i class="fas fa-plus-circle"></i> رصيد افتتاحي
+				</button>
             </div>
         </div>
 
@@ -233,7 +241,7 @@
                 <div class="search-row">
                     <div class="search-field">
                         <label><i class="fas fa-container-storage"></i> رقم الحاوية</label>
-                        <input type="text" id="searchContainer" placeholder="رقم الحاوية...">
+                        <div style="display:flex;gap:6px;align-items:stretch;"><input type="text" id="searchContainer" placeholder="رقم حاوية، أو عدة أرقام بينها مسافة..." style="flex:1;min-width:0;"><button type="button" onclick="openContainerListDialog()" title="لصق قائمة حاويات" style="padding:0 12px;border-radius:10px;border:1px solid var(--border,#ccc);background:var(--bg-card,#fff);cursor:pointer;font-size:16px;">📋</button></div>
                     </div>
                     <div class="search-field">
                         <label><i class="fas fa-tag"></i> الحالة</label>
@@ -283,7 +291,7 @@
                         <option value="25" selected>25</option>
                         <option value="50">50</option>
                         <option value="100">100</option>
-                        <option value="all">الكل</option>
+                        <option value="all">الكل (حتى 500)</option>
                     </select>
                     <label style="font-size:0.8em; color:var(--text-muted); margin-right:10px;">ترتيب:</label>
                     <select id="sortSelect" onchange="document.getElementById('sortSelect').dispatchEvent(new Event('change'))" style="padding:6px 10px; border-radius:6px; border:1px solid var(--border); background:var(--input-bg); color:var(--text); font-family:'Cairo';">
@@ -339,9 +347,6 @@
          <span id="dataSource" style="display:none;"></span>
     </main>
 
-    <!-- عناصر مخفية للتوافق مع التصميم الجديد -->
-    <span id="totalEGPWithoutTax" style="display:none;"></span>
-    <span id="totalMartyr" style="display:none;"></span>
 
     <!-- ==================== نافذة تفاصيل الفاتورة ==================== -->
     <div id="invoiceModal" class="modal">
@@ -399,7 +404,7 @@
             <div class="modal-body">
                 <div style="margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
                     <button class="btn btn-primary" onclick="showAddUserForm()"><i class="fas fa-user-plus"></i> إضافة مستخدم</button>
-                    <button class="btn btn-success" onclick="saveUsersManually()"><i class="fab fa-google-drive"></i> حفظ في Drive</button>
+					<button class="btn btn-success" onclick="saveUsersManually()"><i class="fas fa-sync-alt"></i> تحديث القائمة</button>
                 </div>
                 <div class="users-table-container">
                     <table class="users-table">
@@ -409,6 +414,7 @@
                                 <th>البريد الإلكتروني</th>
                                 <th>الرقم الضريبي</th>
                                 <th>رقم العقد</th>
+								<th>المعرفات الإضافية</th>
                                 <th>نوع المستخدم</th>
                                 <th>الحالة</th>
                                 <th>آخر دخول</th>
@@ -744,40 +750,30 @@
         </div>
     </div>
     
-    <!-- نافذة كشف الحساب -->
-    <div id="accountStatementModal" class="modal">
-        <div class="modal-content" style="max-width: 1000px;">
-            <div class="modal-header">
-                <h2><i class="fas fa-file-invoice-dollar"></i> كشف حساب</h2>
-                <div class="modal-actions">
-                    <button class="btn btn-primary" onclick="exportStatementPDF()"><i class="fas fa-file-pdf"></i> PDF</button>
-                    <button class="btn btn-success" onclick="exportStatementExcel()"><i class="fas fa-file-excel"></i> Excel</button>
-					<button class="btn btn-outline btn-sm" onclick="printStatement()"><i class="fas fa-print"></i> طباعة</button>
-                    <span class="close-button" onclick="closeStatementModal()">&times;</span>
-                </div>
+<!-- نافذة كشف الحساب -->
+<div id="accountStatementModal" class="modal">
+    <div class="modal-content" style="max-width: 1000px;">
+        <div class="modal-header">
+            <h2><i class="fas fa-file-invoice-dollar"></i> كشف حساب</h2>
+            <div class="modal-actions">
+                <button class="btn btn-primary" onclick="exportStatementPDF()"><i class="fas fa-file-pdf"></i> PDF</button>
+                <button class="btn btn-success" onclick="exportStatementExcel()"><i class="fas fa-file-excel"></i> Excel</button>
+                <button class="btn btn-outline btn-sm" onclick="printStatement()"><i class="fas fa-print"></i> طباعة</button>
+                <span class="close-button" onclick="closeStatementModal()">&times;</span>
             </div>
-			            <div class="modal-body">
-                <div class="form-group" style="margin-bottom:15px;">
-                    <label>اختر الحساب</label>
-                    <select id="statementAccount" onchange="updateStatement()">
-                        <option value="">اختر الحساب...</option>
-                    </select>
-					                <div class="row" style="margin-bottom:10px;">
-                    <div class="col">
-                        <label style="font-size:0.8em;">من تاريخ</label>
-                        <input type="date" id="statementDateFrom" onchange="updateStatement()" style="width:100%; padding:6px; border-radius:6px;">
-                    </div>
-                    <div class="col">
-                        <label style="font-size:0.8em;">إلى تاريخ</label>
-                        <input type="date" id="statementDateTo" onchange="updateStatement()" style="width:100%; padding:6px; border-radius:6px;">
-                    </div>
-                </div>
-                </div>
-                <div id="statementBody"></div>
+        </div>
+        <div class="modal-body">
+            <div class="form-group" style="margin-bottom:15px;">
+                <label>اختر الحساب</label>
+                <select id="statementAccount">
+                    <option value="">اختر الحساب...</option>
+                </select>
             </div>
-            <div class="modal-body" id="statementBody"></div>
+            <!-- هنا سيتم وضع واجهة الفلترة والمحتوى ديناميكياً -->
+            <div id="statementBody"></div>
         </div>
     </div>
+</div>
 				<!-- نافذة إعدادات التحديث التلقائي -->
 <div id="refreshSettingsModal" class="modal">
     <div class="modal-content" style="max-width: 450px;">
@@ -821,7 +817,8 @@
     <div id="progressMessage" class="progress-message" style="display: none;"></div>
 
     <!-- JavaScript File -->
-    <script src="script.js"></script>
+<script type="module" src="firebase-auth.js"></script>
+<script src="script.js?v=5"></script>
 	
 	    <!-- عناصر مخفية للتوافق -->
     <span id="fileStatus" style="display:none;"></span>
